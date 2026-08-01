@@ -1,0 +1,70 @@
+[server]
+host = "0.0.0.0"
+port = 8765
+public_base_url = "https://mods.example.com"
+
+[security]
+admin_password = "replace-with-a-long-random-token"
+admin_token = "cs.rin.ru"
+
+[steam]
+username = "your-steam-login"
+password = "your-steam-password"
+guard_code = ""
+
+[steam.windows]
+steamcmd_path = "SteamCMD/steamcmd.exe"
+
+[steam.linux]
+steamcmd_path = "steamcmd"
+
+[storage]
+data_dir = "data"
+database_path = "data/jobs.sqlite3"
+archive_dir = "data/archives"
+file_ttl_hours = 24
+
+[worker]
+max_queue_size = 100
+max_archive_gb = 25
+poll_seconds = 1.0
+
+[[games]]
+name = "Euro Truck Simulator 2"
+app_id = 227300
+enabled = true
+
+[[games]]
+name = "Arma 3"
+app_id = 107410
+enabled = true
+
+[[games]]
+name = "American Truck Simulator"
+app_id = 270880
+enabled = true
+
+[[games]]
+name = "Cities: Skylines"
+app_id = 255710
+enabled = true
+
+[[games]]
+name = "XCOM 2"
+app_id = 268500
+enabled = true
+
+[[games]]
+name = "Hearts of Iron IV"
+app_id = 394360
+enabled = true
+
+[[games]]
+name = "Starbound"
+app_id = 211820
+enabled = true
+
+[[games]]
+name = "Killing Floor 2"
+app_id = 232090
+enabled = true

@@ -1,0 +1,24 @@
+[Unit]
+Description=Workshop Downloader
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=workshop
+Group=workshop
+WorkingDirectory=/opt/WorkShopDownloader
+ExecStart=/usr/bin/python3 /opt/WorkShopDownloader/main.py
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/usr/games
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/WorkShopDownloader/data /opt/WorkShopDownloader/SteamCMD
+
+[Install]
+WantedBy=multi-user.target

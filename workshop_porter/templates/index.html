@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A community Steam Workshop download queue for CS.RIN.RU users.">
+  <title>Workshop Relay</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container-shell">
+      <div>
+        <h1>Workshop Downloader <small>unofficial</small></h1>
+      </div>
+      <div class="worker-state">
+        <span class="worker-dot" aria-hidden="true"></span>
+        <span id="workerLabel">Connecting</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container-shell">
+    <section class="forum-panel" aria-labelledby="request-title">
+      <div class="panel-title">
+        <h2 id="request-title">Request a Workshop item</h2>
+        <span>SteamCMD queue</span>
+      </div>
+
+      <form id="jobForm" class="panel-body">
+        <div class="form-row">
+          <label for="adminToken">Password</label>
+          <div class="input-group input-group-sm">
+            <input class="form-control" id="adminToken" name="adminToken" type="password" autocomplete="current-password" placeholder="The well known default forum password" required>
+            <button class="btn btn-outline-secondary" id="toggleToken" type="button">Show</button>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label for="gameSelect">Game</label>
+          <select class="form-select form-select-sm" id="gameSelect" name="app_id" required>
+            {% for app_id, game_name in games.items() %}
+            <option value="{{ app_id }}">{{ game_name }} ({{ app_id }})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="workshopUrl">Workshop link</label>
+          <input class="form-control form-control-sm" id="workshopUrl" name="url" type="url" inputmode="url" placeholder="https://steamcommunity.com/sharedfiles/filedetails/?id=..." required>
+        </div>
+
+        <div class="form-actions">
+          <button class="submit-button btn btn-sm" type="submit">Add to queue</button>
+        </div>
+        <div id="formMessage" class="form-message" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="forum-panel queue-panel" aria-labelledby="queue-title">
+      <div class="panel-title">
+        <h2 id="queue-title">Download queue</h2>
+        <button class="refresh-link" id="refreshButton" type="button">Refresh</button>
+      </div>
+
+      <div id="queueEmpty" class="empty-state">
+        No Workshop items are currently queued.
+      </div>
+      <div id="jobList" class="job-list" aria-live="polite"></div>
+    </section>
+
+  </main>
+
+  <template id="jobTemplate">
+    <article class="job-card">
+      <div class="job-details">
+        <div class="job-heading">
+          <h3 class="job-title"></h3>
+          <span class="job-status"></span>
+        </div>
+        <div class="job-subline">
+          <span class="job-game"></span>
+          <span class="job-message"></span>
+        </div>
+        <div class="progress" role="progressbar" aria-label="Download progress">
+          <div class="progress-bar"></div>
+        </div>
+        <div class="job-meta">
+          <span class="job-created"></span>
+          <span class="job-size"></span>
+          <span class="job-expiry"></span>
+        </div>
+        <details class="job-error-wrap">
+          <summary>View error</summary>
+          <pre class="job-error"></pre>
+        </details>
+      </div>
+      <div class="job-actions">
+        <span class="job-percent"></span>
+        <button class="copy-button btn btn-sm btn-outline-secondary" type="button">Copy link</button>
+        <a class="download-button btn btn-sm">Download</a>
+        <button class="delete-button btn btn-sm btn-outline-danger" type="button">Delete</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>

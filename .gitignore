@@ -1,0 +1,15 @@
+config.toml
+.env
+.idea/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.zip
+*.part
+
+SteamCMD/*
+!SteamCMD/steamcmd.exe
+
+data/*
+!data/.gitkeep
