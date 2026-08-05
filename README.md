@@ -136,6 +136,11 @@ The default Linux configuration looks for `steamcmd` on `PATH`:
 steamcmd_path = "steamcmd"
 ```
 
+When available, Linux also prefers the current user's Steam Workshop cache at
+`~/.local/share/Steam/steamapps/workshop/content` for download detection and
+cleanup. Set `[steam.linux].content_root` explicitly if your SteamCMD cache
+lives somewhere else.
+
 The application listens on port `8765` unless you change `[server].port`.
 
 ## Configuration reference
@@ -186,8 +191,10 @@ Steam account dedicated to this service is strongly recommended.
 | `archive_dir` | Directory containing completed ZIP archives. |
 | `file_ttl_hours` | Hours before a ZIP link expires and its archive is deleted. |
 
-SteamCMD keeps its own Workshop cache under `SteamCMD/steamapps`. Expiring a ZIP
-does not clear that cache.
+After a ZIP is created successfully, the downloaded workshop content under the
+configured SteamCMD Workshop cache is deleted automatically. The worker also
+removes older cached workshop content once it is older than `file_ttl_hours`.
+Expiring a ZIP only removes the ZIP itself.
 
 ### Worker
 
@@ -353,8 +360,10 @@ public_base_url = "https://mods.example.com"
 
 ### Disk usage keeps growing
 
-Expired ZIP archives are removed automatically, but the SteamCMD Workshop cache
-is retained. Stop the application before manually cleaning old cache content.
+Completed jobs delete their downloaded Workshop content after the ZIP is created.
+The worker also prunes older SteamCMD Workshop cache entries based on
+`file_ttl_hours`. If disk usage still grows, check for failed jobs, unfinished
+manual SteamCMD downloads, or archives waiting for their TTL to expire.
 
 ## Security checklist
 

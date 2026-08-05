@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import threading
 import zipfile
 from contextlib import contextmanager
@@ -54,6 +55,7 @@ class QueueWorker:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock_path = config.data_dir / "single-worker.lock"
+        self._next_cache_cleanup_at = datetime.min.replace(tzinfo=timezone.utc)
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -74,6 +76,7 @@ class QueueWorker:
                     self.database.recover_interrupted()
                     recovered = True
                 self._expire_files()
+                self._prune_old_workshop_content()
                 job = self.database.claim_next()
                 if job:
                     self._process(job)
@@ -105,6 +108,7 @@ class QueueWorker:
                     job_id, progress=value, message="Creating ZIP archive"
                 ),
             )
+            self._delete_workshop_content(source_dir)
             expires_at = datetime.now(timezone.utc) + timedelta(hours=self.config.file_ttl_hours)
             self.database.update_job(
                 job_id,
@@ -175,6 +179,22 @@ class QueueWorker:
                 part_path.unlink()
         return destination.stat().st_size
 
+    def _delete_workshop_content(self, source: Path) -> None:
+        if source.is_symlink():
+            return
+        try:
+            resolved_source = source.resolve(strict=True)
+        except FileNotFoundError:
+            return
+        resolved_root = self.config.steam_content_root.resolve()
+        if resolved_source != resolved_root and resolved_root not in resolved_source.parents:
+            return
+        if resolved_source.is_file():
+            resolved_source.unlink(missing_ok=True)
+            return
+        if resolved_source.is_dir():
+            shutil.rmtree(resolved_source)
+
     def _expire_files(self) -> None:
         for job in self.database.expired_archives(utc_now()):
             name = job.get("archive_name")
@@ -185,3 +205,39 @@ class QueueWorker:
             self.database.update_job(
                 job["id"], status="expired", message="Download link expired"
             )
+
+    def _prune_old_workshop_content(self) -> None:
+        now = datetime.now(timezone.utc)
+        if now < self._next_cache_cleanup_at:
+            return
+        self._next_cache_cleanup_at = now + timedelta(hours=1)
+
+        root = self.config.steam_content_root.resolve()
+        if not root.exists() or not root.is_dir():
+            return
+
+        cutoff = now.timestamp() - (self.config.file_ttl_hours * 3600)
+        for app_dir in root.iterdir():
+            if app_dir.is_symlink() or not app_dir.is_dir():
+                continue
+            for item_dir in app_dir.iterdir():
+                if item_dir.is_symlink() or not item_dir.exists():
+                    continue
+                if self._latest_mtime(item_dir) < cutoff:
+                    self._delete_workshop_content(item_dir)
+            try:
+                next(app_dir.iterdir())
+            except StopIteration:
+                app_dir.rmdir()
+
+    def _latest_mtime(self, path: Path) -> float:
+        latest = path.stat().st_mtime
+        if path.is_dir():
+            for child in path.rglob("*"):
+                if child.is_symlink():
+                    continue
+                try:
+                    latest = max(latest, child.stat().st_mtime)
+                except FileNotFoundError:
+                    continue
+        return latest

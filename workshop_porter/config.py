@@ -105,6 +105,12 @@ class Config:
             if found:
                 steamcmd_path = Path(found).resolve()
         content_default = steamcmd_path.parent / "steamapps" / "workshop" / "content"
+        if platform_name == "linux":
+            home_content_root = (
+                Path.home() / ".local" / "share" / "Steam" / "steamapps" / "workshop" / "content"
+            )
+            if home_content_root.exists():
+                content_default = home_content_root.resolve()
         steam_content_root = resolve(
             os.getenv(
                 "WORKSHOP_PORTER_STEAM_CONTENT_ROOT",
