@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import logging
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -60,6 +61,7 @@ class SteamCmd:
             self.config.steam_content_root / str(app_id) / workshop_id,
             " ".join(safe_command),
         )
+        self._clear_app_workshop_cache(app_id)
 
         process = subprocess.Popen(
             command,
@@ -123,6 +125,36 @@ class SteamCmd:
                 + (f"\n{detail}" if detail else "")
             )
         return target
+
+    def _clear_app_workshop_cache(self, app_id: int) -> None:
+        """Remove only this app's cached Workshop state before downloading.
+
+        SteamCMD can retain an app workshop manifest after an interrupted cache
+        cleanup. That manifest makes it try to reuse files that no longer exist,
+        causing a generic ``Download item failed (Failure)`` response.
+        """
+        content_root = self.config.steam_content_root.resolve()
+        workshop_root = content_root.parent
+        targets = (
+            content_root / str(app_id),
+            workshop_root / "downloads" / str(app_id),
+            workshop_root / f"appworkshop_{app_id}.acf",
+        )
+        for target in targets:
+            try:
+                target.relative_to(workshop_root)
+            except ValueError as exc:
+                raise SteamCmdError(
+                    f"Refusing to clean Workshop cache outside {workshop_root}: {target}"
+                ) from exc
+            if target.is_symlink():
+                raise SteamCmdError(f"Refusing to clean symlinked Workshop cache path: {target}")
+            if target.is_dir():
+                log.info("Removing stale Steam Workshop cache directory: %s", target)
+                shutil.rmtree(target)
+            elif target.is_file():
+                log.info("Removing stale Steam Workshop cache file: %s", target)
+                target.unlink()
 
     def _redact(self, value: str) -> str:
         for secret in (

@@ -194,6 +194,10 @@ Steam account dedicated to this service is strongly recommended.
 After a ZIP is created successfully, the downloaded workshop content under the
 configured SteamCMD Workshop cache is deleted automatically. The worker also
 removes older cached workshop content once it is older than `file_ttl_hours`.
+Before every download, it also clears that game's cached Workshop content,
+temporary Workshop download data, and Workshop manifest. This prevents an
+interrupted or partially deleted download from breaking the next job. It does
+not remove the game's installation or cache for other games.
 Expiring a ZIP only removes the ZIP itself.
 
 ### Worker
