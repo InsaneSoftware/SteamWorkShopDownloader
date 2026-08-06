@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
@@ -11,6 +12,10 @@ from .config import Config
 
 PERCENT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
 PATH_RE = re.compile(r'Success\. Downloaded item \d+ to "([^"]+)"')
+FAILURE_RE = re.compile(r"ERROR!\s+Download item\s+(\d+)\s+failed\s+\(([^)]+)\)", re.IGNORECASE)
+
+
+log = logging.getLogger(__name__)
 
 
 class SteamCmdError(RuntimeError):
@@ -44,6 +49,18 @@ class SteamCmd:
             ["+workshop_download_item", str(app_id), workshop_id, "validate", "+quit"]
         )
 
+        # Do not log the original command: its login arguments contain secrets.
+        safe_command = [self._redact(argument) for argument in command]
+        log.info(
+            "Starting SteamCMD download: app_id=%s workshop_id=%s executable=%s cwd=%s expected_content=%s command=%s",
+            app_id,
+            workshop_id,
+            self.config.steamcmd_path,
+            self.config.steamcmd_path.parent,
+            self.config.steam_content_root / str(app_id) / workshop_id,
+            " ".join(safe_command),
+        )
+
         process = subprocess.Popen(
             command,
             cwd=self.config.steamcmd_path.parent,
@@ -63,7 +80,10 @@ class SteamCmd:
             if not line:
                 continue
             tail.append(line)
-            tail = tail[-20:]
+            tail = tail[-100:]
+            # SteamCMD often puts its only useful diagnostic on stdout. It has
+            # already been redacted above, so preserve it in the service log.
+            log.info("SteamCMD [%s]: %s", workshop_id, line)
             match = PERCENT_RE.search(line)
             if match:
                 percent = min(100, int(float(match.group(1))))
@@ -81,6 +101,17 @@ class SteamCmd:
         downloaded = target.is_file() or (
             target.is_dir() and any(target.iterdir())
         )
+        failure = next((line for line in reversed(tail) if FAILURE_RE.search(line)), None)
+        log.info(
+            "SteamCMD completed: app_id=%s workshop_id=%s return_code=%s target=%s exists=%s",
+            app_id,
+            workshop_id,
+            return_code,
+            target,
+            downloaded,
+        )
+        if failure:
+            log.error("SteamCMD reported a workshop download failure: %s", failure)
         if return_code != 0 and not downloaded:
             detail = "\n".join(tail[-8:]) or f"SteamCMD exited with code {return_code}"
             raise SteamCmdError(detail)

@@ -260,6 +260,7 @@ sudo mkdir -p /opt/WorkShopDownloader
 sudo cp -a /path/to/WorkshopDownloader/. /opt/WorkShopDownloader/
 sudo useradd --system --create-home --shell /usr/sbin/nologin workshop
 sudo chown -R workshop:workshop /opt/WorkShopDownloader
+sudo install -d -o workshop -g workshop -m 0750 /var/log/workshop-downloader
 sudo -u workshop cp /opt/WorkShopDownloader/config.example.toml /opt/WorkShopDownloader/config.toml
 sudoedit /opt/WorkShopDownloader/config.toml
 sudo -u workshop python3 -m pip install --user -r /opt/WorkShopDownloader/requirements.txt
@@ -277,8 +278,11 @@ sudo systemctl status workshop-downloader
 Follow its logs:
 
 ```bash
-sudo journalctl -u workshop-downloader -f
+sudo tail -F /var/log/workshop-downloader/workshop-downloader.log
 ```
+
+The service example writes application and SteamCMD diagnostics to
+`/var/log/workshop-downloader/workshop-downloader.log`.
 
 If you use a different project path or Linux user, update
 `workshop-downloader.service.example` before installing it.
