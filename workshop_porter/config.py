@@ -14,6 +14,15 @@ class Game:
 
 
 @dataclass(frozen=True)
+class SteamAccount:
+    name: str
+    username: str
+    password: str
+    guard_code: str
+    steam_id: str
+
+
+@dataclass(frozen=True)
 class Config:
     host: str
     port: int
@@ -25,6 +34,8 @@ class Config:
     steam_username: str
     steam_password: str
     steam_guard_code: str
+    steam_web_api_key: str
+    steam_accounts: tuple[SteamAccount, ...]
     admin_token: str
     admin_password: str
     public_base_url: str
@@ -135,12 +146,34 @@ class Config:
         guard_code = os.getenv(
             "WORKSHOP_PORTER_STEAM_GUARD_CODE", str(steam.get("guard_code", ""))
         ).strip()
+        web_api_key = os.getenv(
+            "WORKSHOP_PORTER_STEAM_WEB_API_KEY", str(steam.get("web_api_key", ""))
+        ).strip()
         admin_password = os.getenv(
             "ADMIN_PASSWORD", str(security.get("admin_password", ""))
         ).strip()
 
         if not admin_token and not testing:
             raise RuntimeError("[security].admin_token must be configured.")
+
+        accounts: list[SteamAccount] = []
+        for index, item in enumerate(steam.get("accounts", []), start=1):
+            account_username = str(item.get("username", "")).strip()
+            account_password = str(item.get("password", ""))
+            if not account_username or not account_password:
+                raise RuntimeError("Every [[steam.accounts]] entry needs username and password.")
+            accounts.append(SteamAccount(
+                name=str(item.get("name", account_username)).strip() or account_username,
+                username=account_username,
+                password=account_password,
+                guard_code=str(item.get("guard_code", "")).strip(),
+                steam_id=str(item.get("steam_id", "")).strip(),
+            ))
+        if not accounts and username and password:
+            accounts.append(SteamAccount(
+                name=username, username=username, password=password,
+                guard_code=guard_code, steam_id=str(steam.get("steam_id", "")).strip(),
+            ))
 
         games: list[Game] = []
         seen_app_ids: set[int] = set()
@@ -173,6 +206,8 @@ class Config:
             steam_username=username,
             steam_password=password,
             steam_guard_code=guard_code,
+            steam_web_api_key=web_api_key,
+            steam_accounts=tuple(accounts),
             admin_token=admin_token,
             admin_password=admin_password,
             public_base_url=str(server.get("public_base_url", "")).strip().rstrip("/"),

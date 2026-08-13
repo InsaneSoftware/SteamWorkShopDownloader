@@ -25,7 +25,7 @@ the download, archive creation, and temporary download link.
 
 - Python 3.11 or newer from [python.org](https://www.python.org/downloads/).
 - [SteamCMD](https://developer.valvesoftware.com/wiki/SteamCMD).
-- A Steam account that can access the games and Workshop items you configure.
+- One or more Steam accounts that can access the games and Workshop items.
 - Enough free disk space for SteamCMD's Workshop cache and generated ZIP files.
 
 The Python dependencies are small: Flask provides the web application and
@@ -84,9 +84,14 @@ admin_token = "choose-a-long-private-password"
 admin_password = "choose-a-different-admin-password"
 
 [steam]
+web_api_key = "your-steam-web-api-key"
+
+[[steam.accounts]]
+name = "primary"
 username = "your-steam-login"
 password = "your-steam-password"
 guard_code = ""
+steam_id = "your-64-bit-steam-id"
 ```
 
 Keep `host = "127.0.0.1"` when the application is only used on this computer
@@ -170,13 +175,24 @@ The application replaces that URL with the normal home page and stores an
 HTTP-only admin cookie for eight hours. Do not share the admin URL or leave it
 in screenshots and browser history.
 
-### Steam account
+### Steam accounts and automatic Workshop catalogue
 
 | Setting | Purpose |
 | --- | --- |
-| `username` | Steam login name used by SteamCMD. |
-| `password` | Steam password used by SteamCMD. |
+| `web_api_key` | Steam Web API key used only to scan owned games at startup. Create it at `steamcommunity.com/dev/apikey`. |
+| `[[steam.accounts]]` | Repeat this block for every Steam account the service may use. |
+| `name` | Safe label written to logs when this account is selected. |
+| `username` / `password` | SteamCMD login for this account. |
 | `guard_code` | Optional Steam Guard code. Leave blank unless SteamCMD requires one. |
+| `steam_id` | Account's 64-bit SteamID, used to read its owned-game list. |
+
+At startup the service scans every configured account's owned games, checks
+which titles advertise **Steam Workshop**, and lists those titles in the game
+selector. For each title it selects the first configured account that owns it
+when downloading. A Steam Web API key and `steam_id` are required for the scan.
+If the scan is unavailable (for example, the owned-games list is private), the
+manual `[[games]]` entries remain available and the first configured account is
+used instead.
 
 Steam credentials are stored as plain text in `config.toml`. That file is
 ignored by Git and must never be committed, uploaded, or shared. A separate
@@ -209,6 +225,11 @@ Expiring a ZIP only removes the ZIP itself.
 | `poll_seconds` | How often the worker checks for another job. |
 
 ## Adding or disabling games
+
+With the automatic catalogue configured, you normally do not need this section:
+the list is built at service startup. `[[games]]` remains useful as a fallback
+when catalogue scanning is unavailable, or for restricting the manually offered
+list.
 
 Each game is an individual `[[games]]` entry:
 

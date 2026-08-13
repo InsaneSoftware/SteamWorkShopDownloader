@@ -8,7 +8,7 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from .config import Config
+from .config import Config, SteamAccount
 
 
 PERCENT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
@@ -32,20 +32,22 @@ class SteamCmd:
         app_id: int,
         workshop_id: str,
         progress: Callable[[int, str], None],
+        account: SteamAccount | None = None,
     ) -> Path:
         if not self.config.steamcmd_path.is_file():
             raise SteamCmdError(f"SteamCMD was not found at {self.config.steamcmd_path}")
-        if not self.config.steam_username or not self.config.steam_password:
+        account = account or (self.config.steam_accounts[0] if self.config.steam_accounts else None)
+        if not account:
             raise SteamCmdError("STEAM_USERNAME and STEAM_PASSWORD are not configured")
 
         command = [
             str(self.config.steamcmd_path),
             "+@ShutdownOnFailedCommand", "1",
             "+@NoPromptForPassword", "1",
-            "+login", self.config.steam_username, self.config.steam_password,
+            "+login", account.username, account.password,
         ]
-        if self.config.steam_guard_code:
-            command.append(self.config.steam_guard_code)
+        if account.guard_code:
+            command.append(account.guard_code)
         command.extend(
             ["+workshop_download_item", str(app_id), workshop_id, "validate", "+quit"]
         )
@@ -53,7 +55,8 @@ class SteamCmd:
         # Do not log the original command: its login arguments contain secrets.
         safe_command = [self._redact(argument) for argument in command]
         log.info(
-            "Starting SteamCMD download: app_id=%s workshop_id=%s executable=%s cwd=%s expected_content=%s command=%s",
+            "Starting SteamCMD download: account=%s app_id=%s workshop_id=%s executable=%s cwd=%s expected_content=%s command=%s",
+            account.name,
             app_id,
             workshop_id,
             self.config.steamcmd_path,
@@ -78,7 +81,7 @@ class SteamCmd:
         downloaded_path: Path | None = None
         assert process.stdout is not None
         for raw_line in process.stdout:
-            line = self._redact(raw_line.strip())
+            line = self._redact(raw_line.strip(), account)
             if not line:
                 continue
             tail.append(line)
@@ -156,11 +159,10 @@ class SteamCmd:
                 log.info("Removing stale Steam Workshop cache file: %s", target)
                 target.unlink()
 
-    def _redact(self, value: str) -> str:
+    def _redact(self, value: str, account: SteamAccount | None = None) -> str:
         for secret in (
-            self.config.steam_username,
-            self.config.steam_password,
-            self.config.steam_guard_code,
+            *(value for item in self.config.steam_accounts for value in (item.username, item.password, item.guard_code)),
+            *(value for value in (account.username, account.password, account.guard_code) if account),
         ):
             if secret:
                 value = value.replace(secret, "[redacted]")

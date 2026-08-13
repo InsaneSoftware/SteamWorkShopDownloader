@@ -48,10 +48,11 @@ def exclusive_file_lock(path: Path) -> Iterator[None]:
 
 
 class QueueWorker:
-    def __init__(self, config: Config, database: Database, steamcmd: SteamCmd | None = None):
+    def __init__(self, config: Config, database: Database, steamcmd: SteamCmd | None = None, account_for=None):
         self.config = config
         self.database = database
         self.steamcmd = steamcmd or SteamCmd(config)
+        self.account_for = account_for
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock_path = config.data_dir / "single-worker.lock"
@@ -91,6 +92,7 @@ class QueueWorker:
                 lambda value, message: self.database.update_job(
                     job_id, progress=value, message=message
                 ),
+                account=self.account_for(job["app_id"]) if self.account_for else None,
             )
             self.database.update_job(
                 job_id, status="packing", progress=78, message="Creating ZIP archive"
