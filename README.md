@@ -190,6 +190,11 @@ At startup the service scans every configured account's owned games, checks
 which titles advertise **Steam Workshop**, and lists those titles in the game
 selector. For each title it selects the first configured account that owns it
 when downloading. A Steam Web API key and `steam_id` are required for the scan.
+Before scanning, SteamCMD validates every configured account's login. The
+service log reports each account's label, masked login name, configured SteamID,
+authentication result, and API owned-game count; it never logs passwords or
+Steam Guard codes. An account with a bad password or incomplete Steam Guard
+challenge is excluded from the catalogue scan.
 If the scan is unavailable (for example, the owned-games list is private), the
 manual `[[games]]` entries remain available and the first configured account is
 used instead.

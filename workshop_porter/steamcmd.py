@@ -129,6 +129,48 @@ class SteamCmd:
             )
         return target
 
+    def validate_account(self, account: SteamAccount) -> tuple[bool, str]:
+        """Check SteamCMD credentials without downloading any content."""
+        if not self.config.steamcmd_path.is_file():
+            return False, f"SteamCMD was not found at {self.config.steamcmd_path}"
+        command = [
+            str(self.config.steamcmd_path),
+            "+@ShutdownOnFailedCommand", "1",
+            "+@NoPromptForPassword", "1",
+            "+login", account.username, account.password,
+        ]
+        if account.guard_code:
+            command.append(account.guard_code)
+        command.append("+quit")
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.config.steamcmd_path.parent,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+                env={**os.environ, "LC_ALL": "C.UTF-8"},
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return False, f"SteamCMD could not run: {exc}"
+        lines = [self._redact(line.strip(), account) for line in completed.stdout.splitlines()]
+        lines = [line for line in lines if line]
+        success = any("Waiting for user info" in line and "OK" in line for line in lines)
+        if success:
+            return True, "authenticated"
+        useful = next(
+            (
+                line for line in reversed(lines)
+                if any(word in line.lower() for word in ("fail", "error", "password", "guard", "auth"))
+            ),
+            lines[-1] if lines else f"SteamCMD exited with code {completed.returncode}",
+        )
+        return False, useful[-300:]
+
     def _clear_app_workshop_cache(self, app_id: int) -> None:
         """Remove only this app's cached Workshop state before downloading.
 
@@ -160,10 +202,14 @@ class SteamCmd:
                 target.unlink()
 
     def _redact(self, value: str, account: SteamAccount | None = None) -> str:
-        for secret in (
-            *(value for item in self.config.steam_accounts for value in (item.username, item.password, item.guard_code)),
-            *(value for value in (account.username, account.password, account.guard_code) if account),
-        ):
+        secrets = [
+            secret
+            for item in self.config.steam_accounts
+            for secret in (item.username, item.password, item.guard_code)
+        ]
+        if account:
+            secrets.extend((account.username, account.password, account.guard_code))
+        for secret in secrets:
             if secret:
                 value = value.replace(secret, "[redacted]")
         return value

@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from .config import Config, Game, SteamAccount
+from .steamcmd import SteamCmd
 
 
 log = logging.getLogger(__name__)
@@ -38,9 +39,28 @@ def load_catalog(config: Config, opener=urlopen) -> Catalog:
         games=config.games,
         accounts_by_app_id={game.app_id: fallback_account for game in config.games if fallback_account},
     )
-    eligible = [account for account in config.steam_accounts if account.steam_id]
-    if not config.steam_web_api_key or not eligible:
+    configured_for_scan = [account for account in config.steam_accounts if account.steam_id]
+    if not config.steam_web_api_key or not configured_for_scan:
         log.warning("Steam catalogue scan skipped: configure steam.web_api_key and steam_id for each account")
+        return fallback
+
+    steamcmd = SteamCmd(config)
+    authenticated: list[SteamAccount] = []
+    for account in config.steam_accounts:
+        ok, detail = steamcmd.validate_account(account)
+        log.info(
+            "Steam account: name=%s username=%s steam_id=%s authentication=%s detail=%s",
+            account.name,
+            _mask_username(account.username),
+            account.steam_id or "not configured",
+            "ok" if ok else "failed",
+            detail,
+        )
+        if ok:
+            authenticated.append(account)
+    eligible = [account for account in authenticated if account.steam_id]
+    if not eligible:
+        log.warning("Steam catalogue scan skipped: no authenticated account with steam_id and steam.web_api_key")
         return fallback
     try:
         owners: dict[int, SteamAccount] = {}
@@ -51,7 +71,9 @@ def load_catalog(config: Config, opener=urlopen) -> Catalog:
             with opener(f"{OWNED_GAMES_URL}?{query}", timeout=20) as response:
                 payload = json.load(response)
             games = payload.get("response", {}).get("games", [])
-            log.info("Steam catalogue: account=%s returned %s owned games", account.name, len(games))
+            log.info(
+                "Steam account: name=%s api_owned_games=%s", account.name, len(games)
+            )
             for game in games:
                 app_id = int(game.get("appid", 0))
                 if app_id:
@@ -78,3 +100,9 @@ def load_catalog(config: Config, opener=urlopen) -> Catalog:
     except Exception:
         log.exception("Steam catalogue scan failed; using configured [[games]] fallback")
         return fallback
+
+
+def _mask_username(username: str) -> str:
+    if len(username) <= 2:
+        return "*" * len(username)
+    return f"{username[:2]}{'*' * max(3, len(username) - 4)}{username[-2:]}"
