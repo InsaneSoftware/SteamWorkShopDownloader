@@ -190,6 +190,11 @@ At startup the service scans every configured account's owned games, checks
 which titles advertise **Steam Workshop**, and lists those titles in the game
 selector. For each title it selects the first configured account that owns it
 when downloading. A Steam Web API key and `steam_id` are required for the scan.
+Each scanned account's Steam **Game details** privacy setting must be **Public**;
+the Steam Web API otherwise returns an empty owned-game list even when the
+account has games. In Steam, open **Profile → Edit Profile → Privacy Settings**
+and set **Game details** to **Public**. This setting applies to each account
+separately, including every account in a Steam Family.
 Before scanning, SteamCMD validates every configured account's login. The
 service log reports each account's label, masked login name, configured SteamID,
 authentication result, and API owned-game count; it never logs passwords or
