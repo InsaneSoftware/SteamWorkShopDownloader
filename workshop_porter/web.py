@@ -14,6 +14,7 @@ from flask import Flask, jsonify, redirect, render_template, request, send_file,
 from werkzeug.http import dump_options_header
 
 from .config import Config
+from .catalog import load_catalog
 from .database import ActiveJobError, Database, QueueFullError, utc_now
 from .metadata import fetch_workshop_details
 from .worker import QueueWorker
@@ -65,7 +66,8 @@ def create_app(
 ) -> Flask:
     config = config or Config.from_file()
     metadata_fetcher = metadata_fetcher or fetch_workshop_details
-    games_by_app_id = {game.app_id: game.name for game in config.games}
+    catalog = load_catalog(config)
+    games_by_app_id = {game.app_id: game.name for game in catalog.games}
     config.data_dir.mkdir(parents=True, exist_ok=True)
     config.archive_dir.mkdir(parents=True, exist_ok=True)
     database = Database(config.database_path)
@@ -75,7 +77,7 @@ def create_app(
     app.config.update(MAX_CONTENT_LENGTH=32 * 1024, JSON_SORT_KEYS=False)
     app.extensions["workshop_config"] = config
     app.extensions["workshop_database"] = database
-    worker = QueueWorker(config, database)
+    worker = QueueWorker(config, database, account_for=catalog.account_for)
     app.extensions["workshop_worker"] = worker
     download_limiter = DownloadLimiter(config.max_concurrent_downloads)
     app.extensions["workshop_download_limiter"] = download_limiter

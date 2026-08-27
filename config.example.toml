@@ -14,9 +14,23 @@ admin_password = "replace-with-a-long-random-token"
 admin_token = "cs.rin.ru"
 
 [steam]
+# A Steam Web API key is required to scan owned Workshop-enabled titles at startup.
+# Create one at https://steamcommunity.com/dev/apikey
+web_api_key = ""
+
+[[steam.accounts]]
+name = "main"
 username = "your-steam-login"
 password = "your-steam-password"
 guard_code = ""
+steam_id = ""
+
+[[steam.accounts]]
+name = "extra1"
+username = "your-steam-login"
+password = "your-steam-password"
+guard_code = ""
+steam_id = ""
 
 [steam.windows]
 steamcmd_path = "SteamCMD/steamcmd.exe"
@@ -41,36 +55,6 @@ app_id = 227300
 enabled = true
 
 [[games]]
-name = "Arma 3"
-app_id = 107410
-enabled = true
-
-[[games]]
 name = "American Truck Simulator"
 app_id = 270880
-enabled = true
-
-[[games]]
-name = "Cities: Skylines"
-app_id = 255710
-enabled = true
-
-[[games]]
-name = "XCOM 2"
-app_id = 268500
-enabled = true
-
-[[games]]
-name = "Hearts of Iron IV"
-app_id = 394360
-enabled = true
-
-[[games]]
-name = "Starbound"
-app_id = 211820
-enabled = true
-
-[[games]]
-name = "Killing Floor 2"
-app_id = 232090
 enabled = true

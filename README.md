@@ -25,7 +25,7 @@ the download, archive creation, and temporary download link.
 
 - Python 3.11 or newer from [python.org](https://www.python.org/downloads/).
 - [SteamCMD](https://developer.valvesoftware.com/wiki/SteamCMD).
-- A Steam account that can access the games and Workshop items you configure.
+- One or more Steam accounts that can access the games and Workshop items.
 - Enough free disk space for SteamCMD's Workshop cache and generated ZIP files.
 
 The Python dependencies are small: Flask provides the web application and
@@ -84,9 +84,14 @@ admin_token = "choose-a-long-private-password"
 admin_password = "choose-a-different-admin-password"
 
 [steam]
+web_api_key = "your-steam-web-api-key"
+
+[[steam.accounts]]
+name = "primary"
 username = "your-steam-login"
 password = "your-steam-password"
 guard_code = ""
+steam_id = "your-64-bit-steam-id"
 ```
 
 Keep `host = "127.0.0.1"` when the application is only used on this computer
@@ -175,13 +180,34 @@ The application replaces that URL with the normal home page and stores an
 HTTP-only admin cookie for eight hours. Do not share the admin URL or leave it
 in screenshots and browser history.
 
-### Steam account
+### Steam accounts and automatic Workshop catalogue
 
 | Setting | Purpose |
 | --- | --- |
-| `username` | Steam login name used by SteamCMD. |
-| `password` | Steam password used by SteamCMD. |
+| `web_api_key` | Steam Web API key used only to scan owned games at startup. Create it at `steamcommunity.com/dev/apikey`. |
+| `[[steam.accounts]]` | Repeat this block for every Steam account the service may use. |
+| `name` | Safe label written to logs when this account is selected. |
+| `username` / `password` | SteamCMD login for this account. |
 | `guard_code` | Optional Steam Guard code. Leave blank unless SteamCMD requires one. |
+| `steam_id` | Account's 64-bit SteamID, used to read its owned-game list. |
+
+At startup the service scans every configured account's owned games, checks
+which titles advertise **Steam Workshop**, and lists those titles in the game
+selector. For each title it selects the first configured account that owns it
+when downloading. A Steam Web API key and `steam_id` are required for the scan.
+Each scanned account's Steam **Game details** privacy setting must be **Public**;
+the Steam Web API otherwise returns an empty owned-game list even when the
+account has games. In Steam, open **Profile → Edit Profile → Privacy Settings**
+and set **Game details** to **Public**. This setting applies to each account
+separately, including every account in a Steam Family.
+Before scanning, SteamCMD validates every configured account's login. The
+service log reports each account's label, masked login name, configured SteamID,
+authentication result, and API owned-game count; it never logs passwords or
+Steam Guard codes. An account with a bad password or incomplete Steam Guard
+challenge is excluded from the catalogue scan.
+If the scan is unavailable (for example, the owned-games list is private), the
+manual `[[games]]` entries remain available and the first configured account is
+used instead.
 
 Steam credentials are stored as plain text in `config.toml`. That file is
 ignored by Git and must never be committed, uploaded, or shared. A separate
@@ -199,6 +225,10 @@ Steam account dedicated to this service is strongly recommended.
 After a ZIP is created successfully, the downloaded workshop content under the
 configured SteamCMD Workshop cache is deleted automatically. The worker also
 removes older cached workshop content once it is older than `file_ttl_hours`.
+Before every download, it also clears that game's cached Workshop content,
+temporary Workshop download data, and Workshop manifest. This prevents an
+interrupted or partially deleted download from breaking the next job. It does
+not remove the game's installation or cache for other games.
 Expiring a ZIP only removes the ZIP itself.
 
 ### Worker
@@ -210,6 +240,11 @@ Expiring a ZIP only removes the ZIP itself.
 | `poll_seconds` | How often the worker checks for another job. |
 
 ## Adding or disabling games
+
+With the automatic catalogue configured, you normally do not need this section:
+the list is built at service startup. `[[games]]` remains useful as a fallback
+when catalogue scanning is unavailable, or for restricting the manually offered
+list.
 
 Each game is an individual `[[games]]` entry:
 
@@ -265,6 +300,7 @@ sudo mkdir -p /opt/WorkShopDownloader
 sudo cp -a /path/to/WorkshopDownloader/. /opt/WorkShopDownloader/
 sudo useradd --system --create-home --shell /usr/sbin/nologin workshop
 sudo chown -R workshop:workshop /opt/WorkShopDownloader
+sudo install -d -o workshop -g workshop -m 0750 /var/log/workshop-downloader
 sudo -u workshop cp /opt/WorkShopDownloader/config.example.toml /opt/WorkShopDownloader/config.toml
 sudoedit /opt/WorkShopDownloader/config.toml
 sudo -u workshop python3 -m pip install --user -r /opt/WorkShopDownloader/requirements.txt
@@ -282,8 +318,11 @@ sudo systemctl status workshop-downloader
 Follow its logs:
 
 ```bash
-sudo journalctl -u workshop-downloader -f
+sudo tail -F /var/log/workshop-downloader/workshop-downloader.log
 ```
+
+The service example writes application and SteamCMD diagnostics to
+`/var/log/workshop-downloader/workshop-downloader.log`.
 
 If you use a different project path or Linux user, update
 `workshop-downloader.service.example` before installing it.
