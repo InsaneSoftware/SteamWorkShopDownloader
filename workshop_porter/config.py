@@ -14,6 +14,15 @@ class Game:
 
 
 @dataclass(frozen=True)
+class SteamAccount:
+    name: str
+    username: str
+    password: str
+    guard_code: str
+    steam_id: str
+
+
+@dataclass(frozen=True)
 class Config:
     host: str
     port: int
@@ -33,6 +42,13 @@ class Config:
     max_archive_gb: int
     poll_seconds: float
     games: tuple[Game, ...]
+    steam_web_api_key: str = ""
+    steam_accounts: tuple[SteamAccount, ...] = ()
+    threads: int = 16
+    connection_limit: int = 200
+    channel_timeout: int = 120
+    max_concurrent_downloads: int = 4
+    x_accel_redirect_prefix: str = ""
 
     @classmethod
     def from_file(cls, path: str | Path | None = None) -> "Config":
@@ -135,12 +151,80 @@ class Config:
         guard_code = os.getenv(
             "WORKSHOP_PORTER_STEAM_GUARD_CODE", str(steam.get("guard_code", ""))
         ).strip()
+        web_api_key = os.getenv(
+            "WORKSHOP_PORTER_STEAM_WEB_API_KEY", str(steam.get("web_api_key", ""))
+        ).strip()
         admin_password = os.getenv(
             "ADMIN_PASSWORD", str(security.get("admin_password", ""))
         ).strip()
 
         if not admin_token and not testing:
             raise RuntimeError("[security].admin_token must be configured.")
+
+        threads = int(server.get("threads", 16))
+        connection_limit = int(server.get("connection_limit", 200))
+        channel_timeout = int(server.get("channel_timeout", 120))
+        max_concurrent_downloads = int(
+            server.get("max_concurrent_downloads", 4)
+        )
+        if threads < 4:
+            raise RuntimeError("[server].threads must be at least 4.")
+        if connection_limit <= threads:
+            raise RuntimeError(
+                "[server].connection_limit must be greater than [server].threads."
+            )
+        if channel_timeout < 30:
+            raise RuntimeError("[server].channel_timeout must be at least 30 seconds.")
+        if not 1 <= max_concurrent_downloads < threads:
+            raise RuntimeError(
+                "[server].max_concurrent_downloads must be at least 1 and less "
+                "than [server].threads."
+            )
+        x_accel_redirect_prefix = str(
+            server.get("x_accel_redirect_prefix", "")
+        ).strip().rstrip("/")
+        if x_accel_redirect_prefix and (
+            not x_accel_redirect_prefix.startswith("/")
+            or x_accel_redirect_prefix.startswith("//")
+            or any(
+                character in x_accel_redirect_prefix
+                for character in ("\r", "\n", "?", "#")
+            )
+        ):
+            raise RuntimeError(
+                "[server].x_accel_redirect_prefix must be an internal URL path."
+            )
+
+        accounts: list[SteamAccount] = []
+        for item in steam.get("accounts", []):
+            account_username = str(item.get("username", "")).strip()
+            account_password = str(item.get("password", ""))
+            if not account_username or not account_password:
+                raise RuntimeError(
+                    "Every [[steam.accounts]] entry needs username and password."
+                )
+            accounts.append(
+                SteamAccount(
+                    name=(
+                        str(item.get("name", account_username)).strip()
+                        or account_username
+                    ),
+                    username=account_username,
+                    password=account_password,
+                    guard_code=str(item.get("guard_code", "")).strip(),
+                    steam_id=str(item.get("steam_id", "")).strip(),
+                )
+            )
+        if not accounts and username and password:
+            accounts.append(
+                SteamAccount(
+                    name=username,
+                    username=username,
+                    password=password,
+                    guard_code=guard_code,
+                    steam_id=str(steam.get("steam_id", "")).strip(),
+                )
+            )
 
         games: list[Game] = []
         seen_app_ids: set[int] = set()
@@ -181,4 +265,11 @@ class Config:
             max_archive_gb=max(1, int(worker.get("max_archive_gb", 25))),
             poll_seconds=max(0.2, float(worker.get("poll_seconds", 1))),
             games=tuple(games),
+            steam_web_api_key=web_api_key,
+            steam_accounts=tuple(accounts),
+            threads=threads,
+            connection_limit=connection_limit,
+            channel_timeout=channel_timeout,
+            max_concurrent_downloads=max_concurrent_downloads,
+            x_accel_redirect_prefix=x_accel_redirect_prefix,
         )
