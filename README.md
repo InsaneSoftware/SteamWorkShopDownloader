@@ -160,7 +160,8 @@ The application listens on port `8765` unless you change `[server].port`.
 | `threads` | Waitress worker threads. Defaults to `16`. |
 | `connection_limit` | Maximum open Waitress connections. Defaults to `200`. |
 | `channel_timeout` | Seconds before Waitress closes an inactive connection. Defaults to `120`. |
-| `max_concurrent_downloads` | Maximum ZIP transfers served directly by Waitress. Only one connection per job is allowed, which prevents segmented download clients from occupying every worker. Defaults to `4`. |
+| `max_concurrent_downloads` | Maximum ZIP transfers served directly by Waitress across all jobs. Defaults to `8`, leaving half of the 16 workers available for the page and API. |
+| `max_downloads_per_job` | Maximum simultaneous connections to the same ZIP. Defaults to `5`. |
 | `x_accel_redirect_prefix` | Optional Nginx internal URL used to offload ZIP transfers. Leave empty unless the matching Nginx location is configured. |
 
 ### Security
@@ -374,7 +375,8 @@ public_base_url = "https://mods.example.com"
 threads = 16
 connection_limit = 200
 channel_timeout = 120
-max_concurrent_downloads = 4
+max_concurrent_downloads = 8
+max_downloads_per_job = 5
 x_accel_redirect_prefix = "/_protected_archives"
 ```
 

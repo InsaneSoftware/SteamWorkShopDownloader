@@ -27,21 +27,35 @@ ALLOWED_HOSTS = {"steamcommunity.com", "www.steamcommunity.com"}
 class DownloadLimiter:
     """Reserve a bounded number of WSGI workers for direct file transfers."""
 
-    def __init__(self, limit: int):
+    def __init__(self, limit: int, per_job_limit: int):
         self.limit = limit
-        self._active_jobs: set[str] = set()
+        self.per_job_limit = per_job_limit
+        self._active_total = 0
+        self._active_by_job: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def acquire(self, job_id: str) -> bool:
         with self._lock:
-            if job_id in self._active_jobs or len(self._active_jobs) >= self.limit:
+            active_for_job = self._active_by_job.get(job_id, 0)
+            if (
+                self._active_total >= self.limit
+                or active_for_job >= self.per_job_limit
+            ):
                 return False
-            self._active_jobs.add(job_id)
+            self._active_total += 1
+            self._active_by_job[job_id] = active_for_job + 1
             return True
 
     def release(self, job_id: str) -> None:
         with self._lock:
-            self._active_jobs.discard(job_id)
+            active_for_job = self._active_by_job.get(job_id, 0)
+            if active_for_job <= 0:
+                return
+            self._active_total -= 1
+            if active_for_job == 1:
+                self._active_by_job.pop(job_id, None)
+            else:
+                self._active_by_job[job_id] = active_for_job - 1
 
 
 def parse_workshop_url(value: str) -> str:
@@ -79,7 +93,10 @@ def create_app(
     app.extensions["workshop_database"] = database
     worker = QueueWorker(config, database, account_for=catalog.account_for)
     app.extensions["workshop_worker"] = worker
-    download_limiter = DownloadLimiter(config.max_concurrent_downloads)
+    download_limiter = DownloadLimiter(
+        config.max_concurrent_downloads,
+        config.max_downloads_per_job,
+    )
     app.extensions["workshop_download_limiter"] = download_limiter
     if start_worker:
         worker.start()
@@ -293,8 +310,7 @@ def create_app(
             if not download_limiter.acquire(job_id):
                 response = jsonify(
                     error=(
-                        "This archive is already being downloaded or all download "
-                        "slots are busy. Try again shortly."
+                        "All available download slots are busy. Try again shortly."
                     )
                 )
                 response.status_code = 429

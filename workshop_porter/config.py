@@ -47,7 +47,8 @@ class Config:
     threads: int = 16
     connection_limit: int = 200
     channel_timeout: int = 120
-    max_concurrent_downloads: int = 4
+    max_concurrent_downloads: int = 8
+    max_downloads_per_job: int = 5
     x_accel_redirect_prefix: str = ""
 
     @classmethod
@@ -165,8 +166,9 @@ class Config:
         connection_limit = int(server.get("connection_limit", 200))
         channel_timeout = int(server.get("channel_timeout", 120))
         max_concurrent_downloads = int(
-            server.get("max_concurrent_downloads", 4)
+            server.get("max_concurrent_downloads", 8)
         )
+        max_downloads_per_job = int(server.get("max_downloads_per_job", 5))
         if threads < 4:
             raise RuntimeError("[server].threads must be at least 4.")
         if connection_limit <= threads:
@@ -179,6 +181,11 @@ class Config:
             raise RuntimeError(
                 "[server].max_concurrent_downloads must be at least 1 and less "
                 "than [server].threads."
+            )
+        if not 1 <= max_downloads_per_job <= max_concurrent_downloads:
+            raise RuntimeError(
+                "[server].max_downloads_per_job must be at least 1 and no "
+                "greater than [server].max_concurrent_downloads."
             )
         x_accel_redirect_prefix = str(
             server.get("x_accel_redirect_prefix", "")
@@ -271,5 +278,6 @@ class Config:
             connection_limit=connection_limit,
             channel_timeout=channel_timeout,
             max_concurrent_downloads=max_concurrent_downloads,
+            max_downloads_per_job=max_downloads_per_job,
             x_accel_redirect_prefix=x_accel_redirect_prefix,
         )

@@ -5,7 +5,8 @@ public_base_url = "https://mods.example.com"
 threads = 16
 connection_limit = 200
 channel_timeout = 120
-max_concurrent_downloads = 4
+max_concurrent_downloads = 8
+max_downloads_per_job = 5
 # Enable only with the matching Nginx internal location from the README.
 x_accel_redirect_prefix = ""
 

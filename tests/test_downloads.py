@@ -59,16 +59,18 @@ def ready_job(job_id: str = "job-1") -> dict:
 
 
 class DownloadLimiterTests(unittest.TestCase):
-    def test_limits_total_downloads_and_one_connection_per_job(self) -> None:
-        limiter = DownloadLimiter(2)
+    def test_limits_total_downloads_and_connections_per_job(self) -> None:
+        limiter = DownloadLimiter(8, 5)
 
-        self.assertTrue(limiter.acquire("job-1"))
+        for _ in range(5):
+            self.assertTrue(limiter.acquire("job-1"))
         self.assertFalse(limiter.acquire("job-1"))
-        self.assertTrue(limiter.acquire("job-2"))
-        self.assertFalse(limiter.acquire("job-3"))
+        for job_id in ("job-2", "job-3", "job-4"):
+            self.assertTrue(limiter.acquire(job_id))
+        self.assertFalse(limiter.acquire("job-5"))
 
         limiter.release("job-1")
-        self.assertTrue(limiter.acquire("job-3"))
+        self.assertTrue(limiter.acquire("job-5"))
 
 
 class DownloadRouteTests(unittest.TestCase):
@@ -88,7 +90,9 @@ class DownloadRouteTests(unittest.TestCase):
         return app, job
 
     def test_busy_download_returns_429_without_blocking(self) -> None:
-        app, job = self.create_ready_app(max_concurrent_downloads=1)
+        app, job = self.create_ready_app(
+            max_concurrent_downloads=1, max_downloads_per_job=1
+        )
         limiter = app.extensions["workshop_download_limiter"]
         self.assertTrue(limiter.acquire(job["id"]))
 
@@ -101,7 +105,9 @@ class DownloadRouteTests(unittest.TestCase):
         limiter.release(job["id"])
 
     def test_direct_download_releases_slot_when_response_closes(self) -> None:
-        app, job = self.create_ready_app(max_concurrent_downloads=1)
+        app, job = self.create_ready_app(
+            max_concurrent_downloads=1, max_downloads_per_job=1
+        )
         limiter = app.extensions["workshop_download_limiter"]
 
         response = app.test_client().get(
