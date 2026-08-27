@@ -1,12 +1,13 @@
 [server]
-host = "0.0.0.0"
+host = "127.0.0.1"
 port = 8765
 public_base_url = "https://mods.example.com"
 threads = 16
 connection_limit = 200
 channel_timeout = 120
-max_concurrent_downloads = 8
-max_downloads_per_job = 5
+max_downloads_per_ip = 2
+# Set to 1 only when one local reverse proxy is used and port 8765 is private.
+trusted_proxy_hops = 1
 # Enable only with the matching Nginx internal location from the README.
 x_accel_redirect_prefix = ""
 

@@ -6,12 +6,15 @@ import re
 import secrets
 import threading
 import uuid
+from collections.abc import Callable
+from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.parse import quote as url_quote
 
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 from werkzeug.http import dump_options_header
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
 from .catalog import load_catalog
@@ -25,37 +28,35 @@ ALLOWED_HOSTS = {"steamcommunity.com", "www.steamcommunity.com"}
 
 
 class DownloadLimiter:
-    """Reserve a bounded number of WSGI workers for direct file transfers."""
+    """Limit simultaneous direct file transfers by client IP address."""
 
-    def __init__(self, limit: int, per_job_limit: int):
-        self.limit = limit
-        self.per_job_limit = per_job_limit
-        self._active_total = 0
-        self._active_by_job: dict[str, int] = {}
+    def __init__(self, per_ip_limit: int):
+        self.per_ip_limit = per_ip_limit
+        self._active_by_ip: dict[str, int] = {}
         self._lock = threading.Lock()
 
-    def acquire(self, job_id: str) -> bool:
+    def acquire(self, client_ip: str) -> Callable[[], None] | None:
         with self._lock:
-            active_for_job = self._active_by_job.get(job_id, 0)
-            if (
-                self._active_total >= self.limit
-                or active_for_job >= self.per_job_limit
-            ):
-                return False
-            self._active_total += 1
-            self._active_by_job[job_id] = active_for_job + 1
-            return True
+            active_for_ip = self._active_by_ip.get(client_ip, 0)
+            if active_for_ip >= self.per_ip_limit:
+                return None
+            self._active_by_ip[client_ip] = active_for_ip + 1
 
-    def release(self, job_id: str) -> None:
-        with self._lock:
-            active_for_job = self._active_by_job.get(job_id, 0)
-            if active_for_job <= 0:
-                return
-            self._active_total -= 1
-            if active_for_job == 1:
-                self._active_by_job.pop(job_id, None)
-            else:
-                self._active_by_job[job_id] = active_for_job - 1
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            with self._lock:
+                if released:
+                    return
+                released = True
+                active = self._active_by_ip.get(client_ip, 0)
+                if active <= 1:
+                    self._active_by_ip.pop(client_ip, None)
+                else:
+                    self._active_by_ip[client_ip] = active - 1
+
+        return release
 
 
 def parse_workshop_url(value: str) -> str:
@@ -88,15 +89,18 @@ def create_app(
     database.initialize()
 
     app = Flask(__name__)
+    if config.trusted_proxy_hops:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=config.trusted_proxy_hops,
+            x_proto=config.trusted_proxy_hops,
+        )
     app.config.update(MAX_CONTENT_LENGTH=32 * 1024, JSON_SORT_KEYS=False)
     app.extensions["workshop_config"] = config
     app.extensions["workshop_database"] = database
     worker = QueueWorker(config, database, account_for=catalog.account_for)
     app.extensions["workshop_worker"] = worker
-    download_limiter = DownloadLimiter(
-        config.max_concurrent_downloads,
-        config.max_downloads_per_job,
-    )
+    download_limiter = DownloadLimiter(config.max_downloads_per_ip)
     app.extensions["workshop_download_limiter"] = download_limiter
     if start_worker:
         worker.start()
@@ -307,10 +311,17 @@ def create_app(
                 "attachment", {"filename": job["archive_name"]}
             )
         else:
-            if not download_limiter.acquire(job_id):
+            raw_client_ip = request.remote_addr or "unknown"
+            try:
+                client_ip = str(ip_address(raw_client_ip))
+            except ValueError:
+                client_ip = raw_client_ip
+            release_download = download_limiter.acquire(client_ip)
+            if release_download is None:
                 response = jsonify(
                     error=(
-                        "All available download slots are busy. Try again shortly."
+                        "This IP address already has the maximum number of active "
+                        "downloads. Try again when one has finished."
                     )
                 )
                 response.status_code = 429
@@ -325,9 +336,18 @@ def create_app(
                     max_age=0,
                 )
             except Exception:
-                download_limiter.release(job_id)
+                release_download()
                 raise
-            response.call_on_close(lambda: download_limiter.release(job_id))
+            original_iterator = response.response
+
+            def release_after_iteration():
+                try:
+                    yield from original_iterator
+                finally:
+                    release_download()
+
+            response.response = release_after_iteration()
+            response.call_on_close(release_download)
 
         response.headers["Cache-Control"] = "private, no-store"
         response.headers["Referrer-Policy"] = "no-referrer"

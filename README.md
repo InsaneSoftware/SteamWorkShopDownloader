@@ -160,8 +160,8 @@ The application listens on port `8765` unless you change `[server].port`.
 | `threads` | Waitress worker threads. Defaults to `16`. |
 | `connection_limit` | Maximum open Waitress connections. Defaults to `200`. |
 | `channel_timeout` | Seconds before Waitress closes an inactive connection. Defaults to `120`. |
-| `max_concurrent_downloads` | Maximum ZIP transfers served directly by Waitress across all jobs. Defaults to `8`, leaving half of the 16 workers available for the page and API. |
-| `max_downloads_per_job` | Maximum simultaneous connections to the same ZIP. Defaults to `5`. |
+| `max_downloads_per_ip` | Maximum simultaneous direct ZIP transfers per client IP. Defaults to `2`; there is no per-ZIP or global transfer limit. |
+| `trusted_proxy_hops` | Number of trusted reverse proxies in front of Waitress. Use `1` for one local Nginx proxy and `0` for direct access. A nonzero value requires a loopback `host`. |
 | `x_accel_redirect_prefix` | Optional Nginx internal URL used to offload ZIP transfers. Leave empty unless the matching Nginx location is configured. |
 
 ### Security
@@ -346,7 +346,13 @@ Then set the external address in `config.toml`:
 host = "127.0.0.1"
 port = 8765
 public_base_url = "https://mods.example.com"
+max_downloads_per_ip = 2
+trusted_proxy_hops = 1
 ```
+
+`trusted_proxy_hops = 1` trusts the client IP and HTTPS scheme added by that
+one proxy. For security, it is accepted only while Waitress is bound to a
+loopback address.
 
 Restart the application after changing the configuration.
 
@@ -375,8 +381,8 @@ public_base_url = "https://mods.example.com"
 threads = 16
 connection_limit = 200
 channel_timeout = 120
-max_concurrent_downloads = 8
-max_downloads_per_job = 5
+max_downloads_per_ip = 2
+trusted_proxy_hops = 1
 x_accel_redirect_prefix = "/_protected_archives"
 ```
 
@@ -398,7 +404,8 @@ limit_conn workshop_downloads 2;
 
 Reload Nginx and restart the application after validating both configurations.
 If Nginx offload is not enabled, the application falls back to direct transfers
-and reserves most Waitress threads for the page, health check, and API.
+and limits each client IP to two simultaneous transfers. There is intentionally
+no per-ZIP or global download limit.
 
 ## Files and data
 

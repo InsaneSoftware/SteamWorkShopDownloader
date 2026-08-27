@@ -4,6 +4,7 @@ import os
 import shutil
 import tomllib
 from dataclasses import dataclass
+from ipaddress import ip_address
 from pathlib import Path
 
 
@@ -47,8 +48,8 @@ class Config:
     threads: int = 16
     connection_limit: int = 200
     channel_timeout: int = 120
-    max_concurrent_downloads: int = 8
-    max_downloads_per_job: int = 5
+    max_downloads_per_ip: int = 2
+    trusted_proxy_hops: int = 0
     x_accel_redirect_prefix: str = ""
 
     @classmethod
@@ -165,10 +166,8 @@ class Config:
         threads = int(server.get("threads", 16))
         connection_limit = int(server.get("connection_limit", 200))
         channel_timeout = int(server.get("channel_timeout", 120))
-        max_concurrent_downloads = int(
-            server.get("max_concurrent_downloads", 8)
-        )
-        max_downloads_per_job = int(server.get("max_downloads_per_job", 5))
+        max_downloads_per_ip = int(server.get("max_downloads_per_ip", 2))
+        trusted_proxy_hops = int(server.get("trusted_proxy_hops", 0))
         if threads < 4:
             raise RuntimeError("[server].threads must be at least 4.")
         if connection_limit <= threads:
@@ -177,15 +176,19 @@ class Config:
             )
         if channel_timeout < 30:
             raise RuntimeError("[server].channel_timeout must be at least 30 seconds.")
-        if not 1 <= max_concurrent_downloads < threads:
+        if max_downloads_per_ip < 1:
+            raise RuntimeError("[server].max_downloads_per_ip must be at least 1.")
+        if not 0 <= trusted_proxy_hops <= 5:
+            raise RuntimeError("[server].trusted_proxy_hops must be between 0 and 5.")
+        configured_host = str(server.get("host", "0.0.0.0"))
+        try:
+            proxy_host_is_safe = ip_address(configured_host).is_loopback
+        except ValueError:
+            proxy_host_is_safe = configured_host.lower() == "localhost"
+        if trusted_proxy_hops and not proxy_host_is_safe:
             raise RuntimeError(
-                "[server].max_concurrent_downloads must be at least 1 and less "
-                "than [server].threads."
-            )
-        if not 1 <= max_downloads_per_job <= max_concurrent_downloads:
-            raise RuntimeError(
-                "[server].max_downloads_per_job must be at least 1 and no "
-                "greater than [server].max_concurrent_downloads."
+                "[server].trusted_proxy_hops requires [server].host to be a "
+                "loopback address such as 127.0.0.1."
             )
         x_accel_redirect_prefix = str(
             server.get("x_accel_redirect_prefix", "")
@@ -250,7 +253,7 @@ class Config:
             raise RuntimeError("At least one enabled [[games]] entry is required.")
 
         return cls(
-            host=str(server.get("host", "0.0.0.0")),
+            host=configured_host,
             port=int(server.get("port", 8765)),
             data_dir=data_dir,
             database_path=resolve(
@@ -277,7 +280,7 @@ class Config:
             threads=threads,
             connection_limit=connection_limit,
             channel_timeout=channel_timeout,
-            max_concurrent_downloads=max_concurrent_downloads,
-            max_downloads_per_job=max_downloads_per_job,
+            max_downloads_per_ip=max_downloads_per_ip,
+            trusted_proxy_hops=trusted_proxy_hops,
             x_accel_redirect_prefix=x_accel_redirect_prefix,
         )

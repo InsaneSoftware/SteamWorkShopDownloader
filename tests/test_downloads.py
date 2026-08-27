@@ -59,18 +59,20 @@ def ready_job(job_id: str = "job-1") -> dict:
 
 
 class DownloadLimiterTests(unittest.TestCase):
-    def test_limits_total_downloads_and_connections_per_job(self) -> None:
-        limiter = DownloadLimiter(8, 5)
+    def test_limits_each_ip_independently(self) -> None:
+        limiter = DownloadLimiter(2)
 
-        for _ in range(5):
-            self.assertTrue(limiter.acquire("job-1"))
-        self.assertFalse(limiter.acquire("job-1"))
-        for job_id in ("job-2", "job-3", "job-4"):
-            self.assertTrue(limiter.acquire(job_id))
-        self.assertFalse(limiter.acquire("job-5"))
+        first = limiter.acquire("192.0.2.10")
+        second = limiter.acquire("192.0.2.10")
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertIsNone(limiter.acquire("192.0.2.10"))
+        self.assertIsNotNone(limiter.acquire("192.0.2.11"))
+        self.assertIsNotNone(limiter.acquire("192.0.2.11"))
 
-        limiter.release("job-1")
-        self.assertTrue(limiter.acquire("job-5"))
+        first()
+        first()
+        self.assertIsNotNone(limiter.acquire("192.0.2.10"))
 
 
 class DownloadRouteTests(unittest.TestCase):
@@ -90,11 +92,10 @@ class DownloadRouteTests(unittest.TestCase):
         return app, job
 
     def test_busy_download_returns_429_without_blocking(self) -> None:
-        app, job = self.create_ready_app(
-            max_concurrent_downloads=1, max_downloads_per_job=1
-        )
+        app, job = self.create_ready_app(max_downloads_per_ip=1)
         limiter = app.extensions["workshop_download_limiter"]
-        self.assertTrue(limiter.acquire(job["id"]))
+        release = limiter.acquire("127.0.0.1")
+        self.assertIsNotNone(release)
 
         response = app.test_client().get(
             f"/download/{job['id']}?token={job['download_token']}"
@@ -102,12 +103,10 @@ class DownloadRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.headers["Retry-After"], "30")
-        limiter.release(job["id"])
+        release()
 
     def test_direct_download_releases_slot_when_response_closes(self) -> None:
-        app, job = self.create_ready_app(
-            max_concurrent_downloads=1, max_downloads_per_job=1
-        )
+        app, job = self.create_ready_app(max_downloads_per_ip=1)
         limiter = app.extensions["workshop_download_limiter"]
 
         response = app.test_client().get(
@@ -115,11 +114,26 @@ class DownloadRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, b"zip-data")
-        self.assertFalse(limiter.acquire(job["id"]))
-
+        release = limiter.acquire("127.0.0.1")
+        self.assertIsNotNone(release)
+        release()
         response.close()
-        self.assertTrue(limiter.acquire(job["id"]))
-        limiter.release(job["id"])
+
+    def test_trusted_proxy_uses_rightmost_forwarded_ip(self) -> None:
+        app, job = self.create_ready_app(
+            max_downloads_per_ip=1, trusted_proxy_hops=1
+        )
+        limiter = app.extensions["workshop_download_limiter"]
+        release = limiter.acquire("198.51.100.9")
+        self.assertIsNotNone(release)
+
+        response = app.test_client().get(
+            f"/download/{job['id']}?token={job['download_token']}",
+            headers={"X-Forwarded-For": "203.0.113.7, 198.51.100.9"},
+        )
+
+        self.assertEqual(response.status_code, 429)
+        release()
 
     def test_nginx_offload_returns_internal_redirect(self) -> None:
         app, job = self.create_ready_app(
