@@ -4,11 +4,14 @@ import hmac
 import hashlib
 import re
 import secrets
+import threading
 import uuid
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from urllib.parse import quote as url_quote
 
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
+from werkzeug.http import dump_options_header
 
 from .config import Config
 from .database import ActiveJobError, Database, QueueFullError, utc_now
@@ -18,6 +21,26 @@ from .worker import QueueWorker
 
 WORKSHOP_ID_RE = re.compile(r"^\d{5,20}$")
 ALLOWED_HOSTS = {"steamcommunity.com", "www.steamcommunity.com"}
+
+
+class DownloadLimiter:
+    """Reserve a bounded number of WSGI workers for direct file transfers."""
+
+    def __init__(self, limit: int):
+        self.limit = limit
+        self._active_jobs: set[str] = set()
+        self._lock = threading.Lock()
+
+    def acquire(self, job_id: str) -> bool:
+        with self._lock:
+            if job_id in self._active_jobs or len(self._active_jobs) >= self.limit:
+                return False
+            self._active_jobs.add(job_id)
+            return True
+
+    def release(self, job_id: str) -> None:
+        with self._lock:
+            self._active_jobs.discard(job_id)
 
 
 def parse_workshop_url(value: str) -> str:
@@ -54,6 +77,8 @@ def create_app(
     app.extensions["workshop_database"] = database
     worker = QueueWorker(config, database)
     app.extensions["workshop_worker"] = worker
+    download_limiter = DownloadLimiter(config.max_concurrent_downloads)
+    app.extensions["workshop_download_limiter"] = download_limiter
     if start_worker:
         worker.start()
 
@@ -252,10 +277,44 @@ def create_app(
         archive = config.archive_dir / job["archive_name"]
         if not archive.is_file():
             return jsonify(error="Archive no longer exists"), 410
-        return send_file(
-            archive, as_attachment=True, download_name=job["archive_name"],
-            conditional=True, max_age=0
-        )
+
+        if config.x_accel_redirect_prefix:
+            response = app.response_class(status=200, mimetype="application/zip")
+            response.headers["X-Accel-Redirect"] = (
+                f"{config.x_accel_redirect_prefix}/"
+                f"{url_quote(job['archive_name'], safe='')}"
+            )
+            response.headers["Content-Disposition"] = dump_options_header(
+                "attachment", {"filename": job["archive_name"]}
+            )
+        else:
+            if not download_limiter.acquire(job_id):
+                response = jsonify(
+                    error=(
+                        "This archive is already being downloaded or all download "
+                        "slots are busy. Try again shortly."
+                    )
+                )
+                response.status_code = 429
+                response.headers["Retry-After"] = "30"
+                return response
+            try:
+                response = send_file(
+                    archive,
+                    as_attachment=True,
+                    download_name=job["archive_name"],
+                    conditional=True,
+                    max_age=0,
+                )
+            except Exception:
+                download_limiter.release(job_id)
+                raise
+            response.call_on_close(lambda: download_limiter.release(job_id))
+
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
 
     @app.errorhandler(413)
     def too_large(_error):

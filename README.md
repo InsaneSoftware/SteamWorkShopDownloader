@@ -152,6 +152,11 @@ The application listens on port `8765` unless you change `[server].port`.
 | `host` | Address Waitress listens on. Use `127.0.0.1` locally or behind a proxy. |
 | `port` | HTTP port. The default is `8765`. |
 | `public_base_url` | Public HTTPS address used when creating download links, such as `https://mods.example.com`. Leave empty for local use. |
+| `threads` | Waitress worker threads. Defaults to `16`. |
+| `connection_limit` | Maximum open Waitress connections. Defaults to `200`. |
+| `channel_timeout` | Seconds before Waitress closes an inactive connection. Defaults to `120`. |
+| `max_concurrent_downloads` | Maximum ZIP transfers served directly by Waitress. Only one connection per job is allowed, which prevents segmented download clients from occupying every worker. Defaults to `4`. |
+| `x_accel_redirect_prefix` | Optional Nginx internal URL used to offload ZIP transfers. Leave empty unless the matching Nginx location is configured. |
 
 ### Security
 
@@ -305,6 +310,55 @@ public_base_url = "https://mods.example.com"
 
 Restart the application after changing the configuration.
 
+### Offload large ZIP downloads to Nginx
+
+Waitress should not stream multi-gigabyte ZIP files on a busy public server.
+Nginx can validate the public request through the application and then transfer
+the file itself. Add an internal location to the Nginx server block:
+
+```nginx
+location /_protected_archives/ {
+    internal;
+    alias /opt/WorkShopDownloader/data/archives/;
+    sendfile on;
+}
+```
+
+The `alias` must be the absolute path configured as `[storage].archive_dir`, and
+both the location and alias must end in `/`. Then enable the matching prefix:
+
+```toml
+[server]
+host = "127.0.0.1"
+port = 8765
+public_base_url = "https://mods.example.com"
+threads = 16
+connection_limit = 200
+channel_timeout = 120
+max_concurrent_downloads = 4
+x_accel_redirect_prefix = "/_protected_archives"
+```
+
+The internal location cannot be opened directly. The application still checks
+the job status and secret download token before returning the internal redirect.
+
+For a public service, also limit the number of downloads per client. Define the
+shared zone once in Nginx's `http` context:
+
+```nginx
+limit_conn_zone $binary_remote_addr zone=workshop_downloads:10m;
+```
+
+Then add this inside the internal archive location:
+
+```nginx
+limit_conn workshop_downloads 2;
+```
+
+Reload Nginx and restart the application after validating both configurations.
+If Nginx offload is not enabled, the application falls back to direct transfers
+and reserves most Waitress threads for the page, health check, and API.
+
 ## Files and data
 
 ```text
@@ -374,5 +428,6 @@ Before making the service public:
 - Confirm `config.toml` is not tracked by Git.
 - Use HTTPS through a reverse proxy.
 - Keep port `8765` private when a reverse proxy is used.
+- Use Nginx offload and a per-client connection limit for public ZIP downloads.
 - Use a dedicated Steam account with only the access the service needs.
 - Back up configuration privately, never inside the public repository.

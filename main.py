@@ -17,7 +17,8 @@ if __name__ == "__main__":
         application,
         host=config.host,
         port=config.port,
-        threads=8,
-        channel_timeout=3600,
+        threads=config.threads,
+        connection_limit=config.connection_limit,
+        channel_timeout=config.channel_timeout,
         ident="Workshop Porter",
     )

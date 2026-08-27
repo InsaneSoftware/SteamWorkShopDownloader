@@ -33,6 +33,11 @@ class Config:
     max_archive_gb: int
     poll_seconds: float
     games: tuple[Game, ...]
+    threads: int = 16
+    connection_limit: int = 200
+    channel_timeout: int = 120
+    max_concurrent_downloads: int = 4
+    x_accel_redirect_prefix: str = ""
 
     @classmethod
     def from_file(cls, path: str | Path | None = None) -> "Config":
@@ -142,6 +147,40 @@ class Config:
         if not admin_token and not testing:
             raise RuntimeError("[security].admin_token must be configured.")
 
+        threads = int(server.get("threads", 16))
+        connection_limit = int(server.get("connection_limit", 200))
+        channel_timeout = int(server.get("channel_timeout", 120))
+        max_concurrent_downloads = int(
+            server.get("max_concurrent_downloads", 4)
+        )
+        if threads < 4:
+            raise RuntimeError("[server].threads must be at least 4.")
+        if connection_limit <= threads:
+            raise RuntimeError(
+                "[server].connection_limit must be greater than [server].threads."
+            )
+        if channel_timeout < 30:
+            raise RuntimeError("[server].channel_timeout must be at least 30 seconds.")
+        if not 1 <= max_concurrent_downloads < threads:
+            raise RuntimeError(
+                "[server].max_concurrent_downloads must be at least 1 and less "
+                "than [server].threads."
+            )
+        x_accel_redirect_prefix = str(
+            server.get("x_accel_redirect_prefix", "")
+        ).strip().rstrip("/")
+        if x_accel_redirect_prefix and (
+            not x_accel_redirect_prefix.startswith("/")
+            or x_accel_redirect_prefix.startswith("//")
+            or any(
+                character in x_accel_redirect_prefix
+                for character in ("\r", "\n", "?", "#")
+            )
+        ):
+            raise RuntimeError(
+                "[server].x_accel_redirect_prefix must be an internal URL path."
+            )
+
         games: list[Game] = []
         seen_app_ids: set[int] = set()
         for item in raw.get("games", []):
@@ -181,4 +220,9 @@ class Config:
             max_archive_gb=max(1, int(worker.get("max_archive_gb", 25))),
             poll_seconds=max(0.2, float(worker.get("poll_seconds", 1))),
             games=tuple(games),
+            threads=threads,
+            connection_limit=connection_limit,
+            channel_timeout=channel_timeout,
+            max_concurrent_downloads=max_concurrent_downloads,
+            x_accel_redirect_prefix=x_accel_redirect_prefix,
         )
