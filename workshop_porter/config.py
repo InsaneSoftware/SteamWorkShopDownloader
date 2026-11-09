@@ -51,6 +51,12 @@ class Config:
     max_downloads_per_ip: int = 2
     trusted_proxy_hops: int = 0
     x_accel_redirect_prefix: str = ""
+    credentials_key: str = ""
+    account_check_minutes: int = 15
+    broken_recheck_minutes: int = 360
+    max_pending_accounts: int = 25
+    steamcmd_timeout_seconds: int = 120
+    max_store_lookups_per_check: int = 60
 
     @classmethod
     def from_file(cls, path: str | Path | None = None) -> "Config":
@@ -74,6 +80,7 @@ class Config:
         platform_steam = steam.get(platform_name, {})
         storage = raw.get("storage", {})
         worker = raw.get("worker", {})
+        pool = raw.get("accounts", {})
         testing = bool(raw.get("testing", False))
 
         def resolve(value: str) -> Path:
@@ -249,8 +256,6 @@ class Config:
                 raise RuntimeError(f"Duplicate game app_id in configuration: {app_id}")
             seen_app_ids.add(app_id)
             games.append(Game(app_id=app_id, name=name))
-        if not games:
-            raise RuntimeError("At least one enabled [[games]] entry is required.")
 
         return cls(
             host=configured_host,
@@ -283,4 +288,15 @@ class Config:
             max_downloads_per_ip=max_downloads_per_ip,
             trusted_proxy_hops=trusted_proxy_hops,
             x_accel_redirect_prefix=x_accel_redirect_prefix,
+            credentials_key=os.getenv(
+                "WORKSHOP_PORTER_CREDENTIALS_KEY",
+                str(security.get("credentials_key", "")),
+            ).strip(),
+            account_check_minutes=max(1, int(pool.get("check_interval_minutes", 15))),
+            broken_recheck_minutes=max(5, int(pool.get("broken_recheck_minutes", 360))),
+            max_pending_accounts=max(1, int(pool.get("max_pending", 25))),
+            steamcmd_timeout_seconds=max(30, int(pool.get("login_timeout_seconds", 120))),
+            max_store_lookups_per_check=max(
+                1, int(pool.get("max_store_lookups_per_check", 60))
+            ),
         )

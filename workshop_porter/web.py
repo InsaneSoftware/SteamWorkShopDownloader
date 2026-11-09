@@ -16,10 +16,14 @@ from flask import Flask, jsonify, redirect, render_template, request, send_file,
 from werkzeug.http import dump_options_header
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from .accounts import AccountPool
 from .config import Config
-from .catalog import load_catalog
-from .database import ActiveJobError, Database, QueueFullError, utc_now
+from .database import (
+    ActiveJobError, Database, DuplicateAccountError, QueueFullError, utc_now,
+)
 from .metadata import fetch_workshop_details
+from .steamcmd import SteamCmd
+from .vault import CredentialVault
 from .worker import QueueWorker
 
 
@@ -78,15 +82,19 @@ def create_app(
     config: Config | None = None,
     start_worker: bool = True,
     metadata_fetcher=None,
+    steamcmd: SteamCmd | None = None,
+    steam_api_opener=None,
 ) -> Flask:
     config = config or Config.from_file()
     metadata_fetcher = metadata_fetcher or fetch_workshop_details
-    catalog = load_catalog(config)
-    games_by_app_id = {game.app_id: game.name for game in catalog.games}
     config.data_dir.mkdir(parents=True, exist_ok=True)
     config.archive_dir.mkdir(parents=True, exist_ok=True)
     database = Database(config.database_path)
     database.initialize()
+    vault = CredentialVault.from_config(config.credentials_key, config.data_dir)
+    pool_options = {"opener": steam_api_opener} if steam_api_opener else {}
+    pool = AccountPool(config, database, vault, steamcmd, **pool_options)
+    pool.import_config_accounts()
 
     app = Flask(__name__)
     if config.trusted_proxy_hops:
@@ -98,7 +106,8 @@ def create_app(
     app.config.update(MAX_CONTENT_LENGTH=32 * 1024, JSON_SORT_KEYS=False)
     app.extensions["workshop_config"] = config
     app.extensions["workshop_database"] = database
-    worker = QueueWorker(config, database, account_for=catalog.account_for)
+    app.extensions["workshop_accounts"] = pool
+    worker = QueueWorker(config, database, pool)
     app.extensions["workshop_worker"] = worker
     download_limiter = DownloadLimiter(config.max_downloads_per_ip)
     app.extensions["workshop_download_limiter"] = download_limiter
@@ -125,6 +134,57 @@ def create_app(
             request.cookies.get("rin_admin", ""),
             admin_cookie_value(),
         )
+
+    def require_admin_session():
+        if not has_admin_access():
+            return jsonify(error="Admin required"), 403
+        # Custom header blocks cross-site form posts riding on the cookie.
+        if request.method != "GET" and request.headers.get("X-Requested-With") != "fetch":
+            return jsonify(error="Bad request"), 400
+        return None
+
+    def account_status(account: dict) -> str:
+        return account["status"] if account["enabled"] else "disabled"
+
+    def serialize_account(account: dict, names: dict[int, str]) -> dict:
+        """Public view: never includes the Steam login or password."""
+        games = [
+            {"app_id": app_id, "name": names[app_id]}
+            for app_id in account["owned_app_ids"]
+            if app_id in names
+        ]
+        games.sort(key=lambda game: game["name"].lower())
+        return {
+            "id": account["id"],
+            "display_name": account["display_name"],
+            "status": account_status(account),
+            "status_reason": account["status_reason"],
+            "games": games,
+            "created_at": account["created_at"],
+            "last_checked_at": account["last_checked_at"],
+            "last_ok_at": account["last_ok_at"],
+        }
+
+    def serialize_admin_account(account: dict, names: dict[int, str]) -> dict:
+        result = serialize_account(account, names)
+        try:
+            username = vault.decrypt(account["username_enc"])
+        except RuntimeError:
+            username = "(cannot decrypt)"
+        visible = account.get("library_visible")
+        result.update(
+            username=username,
+            steam_id=account.get("steam_id"),
+            library_visible=None if visible is None else bool(visible),
+            enabled=account["enabled"],
+            raw_status=account["status"],
+            last_error=account["last_error"],
+            consecutive_failures=account["consecutive_failures"],
+            broken_since=account["broken_since"],
+            next_check_at=account["next_check_at"],
+            last_used_at=account["last_used_at"],
+        )
+        return result
 
     def serialize_job(
         job: dict,
@@ -169,7 +229,8 @@ def create_app(
                 samesite="Lax",
             )
             return response
-        return render_template("index.html", games=games_by_app_id)
+        games = {game["app_id"]: game["name"] for game in pool.supported_games()}
+        return render_template("index.html", games=games)
 
     @app.get("/health")
     def health():
@@ -202,10 +263,16 @@ def create_app(
         if auth_error:
             return auth_error
         payload = request.get_json(silent=True) or {}
+        games_by_app_id = pool.known_games()
         try:
             app_id = int(payload.get("app_id", 0))
             if app_id not in games_by_app_id:
-                raise ValueError("Choose one of the configured games")
+                raise ValueError("Choose one of the supported games")
+            if not pool.accounts_for_app(app_id):
+                raise ValueError(
+                    f"No working Steam account owns {games_by_app_id[app_id]} yet. "
+                    "Add an account that owns it to the pool."
+                )
             source_url = str(payload.get("url", "")).strip()
             workshop_id = parse_workshop_url(source_url)
             details = metadata_fetcher(workshop_id)
@@ -353,6 +420,119 @@ def create_app(
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
+
+    # ----- Community account pool ---------------------------------------
+
+    @app.get("/api/games")
+    def list_games():
+        auth_error = require_admin()
+        if auth_error:
+            return auth_error
+        return jsonify(games=pool.supported_games())
+
+    @app.get("/api/accounts")
+    def list_accounts():
+        auth_error = require_admin()
+        if auth_error:
+            return auth_error
+        names = pool.known_games()
+        return jsonify(
+            accounts=[serialize_account(a, names) for a in database.list_accounts()],
+            check_interval_minutes=config.account_check_minutes,
+        )
+
+    @app.get("/api/accounts/<account_id>")
+    def get_account(account_id: str):
+        auth_error = require_admin()
+        if auth_error:
+            return auth_error
+        account = database.get_account(account_id)
+        if not account:
+            return jsonify(error="Account not found"), 404
+        return jsonify(account=serialize_account(account, pool.known_games()))
+
+    @app.post("/api/accounts")
+    def submit_account():
+        auth_error = require_admin()
+        if auth_error:
+            return auth_error
+        payload = request.get_json(silent=True) or {}
+        try:
+            account, created = pool.submit(
+                str(payload.get("display_name", "")),
+                str(payload.get("username", "")),
+                str(payload.get("password", "")),
+                str(payload.get("guard_code", "")),
+            )
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        except DuplicateAccountError as exc:
+            state = (
+                "is waiting for validation" if str(exc) == "pending"
+                else "is already in the pool"
+            )
+            return jsonify(error=f"This Steam account {state}."), 409
+        except QueueFullError as exc:
+            return jsonify(error=str(exc)), 429
+        return jsonify(
+            account=serialize_account(account, pool.known_games()), created=created
+        ), 201
+
+    # ----- Admin dashboard ----------------------------------------------
+
+    @app.get("/admin")
+    def admin_page():
+        if not has_admin_access():
+            return redirect(url_for("index"))
+        return render_template("admin.html")
+
+    @app.get("/api/admin/accounts")
+    def admin_accounts():
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        names = pool.known_games()
+        return jsonify(
+            accounts=[
+                serialize_admin_account(a, names) for a in database.list_accounts()
+            ],
+            games=pool.supported_games(),
+            check_interval_minutes=config.account_check_minutes,
+            web_api_key=bool(config.steam_web_api_key),
+        )
+
+    @app.post("/api/admin/accounts/<account_id>/recheck")
+    def admin_recheck(account_id: str):
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        if not database.get_account(account_id):
+            return jsonify(error="Account not found"), 404
+        pool.request_recheck(account_id)
+        return jsonify(ok=True)
+
+    @app.post("/api/admin/accounts/<account_id>/enabled")
+    def admin_set_enabled(account_id: str):
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        if not database.get_account(account_id):
+            return jsonify(error="Account not found"), 404
+        enabled = bool((request.get_json(silent=True) or {}).get("enabled"))
+        fields = {"enabled": enabled}
+        if enabled:
+            fields["next_check_at"] = utc_now()
+        database.update_account(account_id, **fields)
+        return jsonify(ok=True)
+
+    @app.delete("/api/admin/accounts/<account_id>")
+    def admin_delete_account(account_id: str):
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        if not database.delete_account(account_id):
+            return jsonify(error="Account not found"), 404
+        return jsonify(deleted=True)
 
     @app.errorhandler(413)
     def too_large(_error):

@@ -78,6 +78,7 @@ async function refreshQueue() {
     const adminData = await adminResponse.json();
     if (!response.ok) throw new Error(data.error || "Queue unavailable");
     renderJobs(data.jobs, adminData.admin);
+    document.querySelector("#adminLink").hidden = !adminData.admin;
     const busy = data.jobs.some((job) =>
       ["downloading", "packing"].includes(job.status)
     );
@@ -181,5 +182,184 @@ function formatRelativeTime(value) {
   return formatter.format(seconds, "second");
 }
 
+// ----- Community account pool ------------------------------------------
+
+const accountForm = document.querySelector("#accountForm");
+const accountMessage = document.querySelector("#accountMessage");
+const gameSelect = document.querySelector("#gameSelect");
+const STATUS_LABELS = {
+  working: "working",
+  pending: "validating",
+  broken: "broken",
+  disabled: "disabled",
+};
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+async function refreshPool() {
+  const token = tokenInput.value.trim();
+  if (!token) return;
+  try {
+    const headers = { "Authorization": `Bearer ${token}` };
+    const [gamesResponse, accountsResponse] = await Promise.all([
+      fetch("/api/games", { headers, cache: "no-store" }),
+      fetch("/api/accounts", { headers, cache: "no-store" }),
+    ]);
+    if (!gamesResponse.ok || !accountsResponse.ok) return;
+    const { games } = await gamesResponse.json();
+    const { accounts, check_interval_minutes } = await accountsResponse.json();
+    renderGames(games);
+    renderAccounts(accounts, check_interval_minutes);
+  } catch (error) {
+    // Queue status already shows connectivity problems.
+  }
+}
+
+function renderGames(games) {
+  const rows = document.querySelector("#gameRows");
+  rows.replaceChildren();
+  games
+    .slice()
+    .sort((a, b) => b.accounts - a.accounts || a.name.localeCompare(b.name))
+    .forEach((game) => {
+      const row = el("tr", game.accounts ? "" : "unsupported");
+      row.append(el("td", "", game.name));
+      const count = el("td", "count",
+        game.accounts ? `${game.accounts} account${game.accounts === 1 ? "" : "s"}` : "none yet");
+      row.append(count);
+      rows.append(row);
+    });
+
+  // Mark games without a working account in the request form.
+  const counts = new Map(games.map((game) => [String(game.app_id), game]));
+  [...gameSelect.options].forEach((option) => {
+    const game = counts.get(option.value);
+    if (!game) return;
+    option.textContent = game.accounts
+      ? `${game.name} (${game.accounts} account${game.accounts === 1 ? "" : "s"})`
+      : `${game.name} (no account yet)`;
+    option.disabled = game.accounts === 0;
+  });
+  if (gameSelect.selectedOptions[0]?.disabled) {
+    const firstEnabled = [...gameSelect.options].find((option) => !option.disabled);
+    if (firstEnabled) gameSelect.value = firstEnabled.value;
+  }
+}
+
+function renderAccounts(accounts, interval) {
+  const list = document.querySelector("#accountList");
+  const working = accounts.filter((a) => a.status === "working").length;
+  document.querySelector("#accountSummary").textContent =
+    `${working} of ${accounts.length} working · checked every ${interval} min`;
+  list.replaceChildren();
+  if (!accounts.length) {
+    list.append(el("div", "empty-state", "No accounts shared yet. Be the first!"));
+    return;
+  }
+  accounts.forEach((account) => {
+    const item = el("article", `account-row ${account.status}`);
+    const head = el("div", "account-head");
+    head.append(el("span", "account-name", account.display_name));
+    head.append(el("span", `job-status ${account.status}`,
+      STATUS_LABELS[account.status] || account.status));
+    item.append(head);
+
+    const sub = el("div", "account-sub");
+    if (account.status === "working") {
+      sub.textContent = account.games.map((g) => g.name).join(", ");
+    } else {
+      sub.textContent = account.status_reason || "";
+    }
+    item.append(sub);
+    if (account.last_checked_at) {
+      item.append(el("div", "account-meta",
+        `Checked ${formatRelativeTime(account.last_checked_at)}`));
+    }
+    list.append(item);
+  });
+}
+
+accountForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const token = tokenInput.value.trim();
+  if (!token) {
+    showAccountMessage("Enter the site password at the top first.", "error");
+    return;
+  }
+  const button = accountForm.querySelector(".submit-button");
+  button.disabled = true;
+  showAccountMessage("Submitting…", "");
+  try {
+    const response = await fetch("/api/accounts", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        display_name: document.querySelector("#displayName").value,
+        username: document.querySelector("#steamLogin").value,
+        password: document.querySelector("#steamPassword").value,
+        guard_code: document.querySelector("#guardCode").value,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not add this account");
+    // Do not keep credentials in the page longer than needed.
+    ["#steamLogin", "#steamPassword", "#guardCode"].forEach((selector) => {
+      document.querySelector(selector).value = "";
+    });
+    showAccountMessage("Account queued. Logging in with SteamCMD…", "");
+    await refreshPool();
+    const final = await waitForValidation(data.account.id, token);
+    if (final.status === "working") {
+      showAccountMessage(
+        `Thanks! Account works and owns: ${final.games.map((g) => g.name).join(", ")}.`,
+        "success",
+      );
+    } else if (final.status === "pending") {
+      showAccountMessage(
+        "Still validating (the server may be busy downloading). Check the list later.",
+        "",
+      );
+    } else {
+      showAccountMessage(`Not added: ${final.status_reason}`, "error");
+    }
+    await refreshPool();
+  } catch (error) {
+    showAccountMessage(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+async function waitForValidation(accountId, token) {
+  const deadline = Date.now() + 5 * 60 * 1000;
+  let account = null;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    const response = await fetch(`/api/accounts/${accountId}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!response.ok) break;
+    account = (await response.json()).account;
+    if (account.status !== "pending") return account;
+  }
+  return account || { status: "pending" };
+}
+
+function showAccountMessage(message, style) {
+  accountMessage.textContent = message;
+  accountMessage.className = `form-message ${style}`;
+}
+
 refreshQueue();
+refreshPool();
 window.setInterval(refreshQueue, 2500);
+window.setInterval(refreshPool, 15000);

@@ -19,6 +19,9 @@ the download, archive creation, and temporary download link.
 - Shows download progress and errors in a browser-based queue.
 - Creates temporary download links and removes expired archives automatically.
 - Supports an admin mode for viewing full errors and deleting queue entries.
+- Lets the community share Steam accounts. Each account is validated with
+  SteamCMD, re-checked every 15 minutes, and flagged when it breaks.
+- Includes an admin dashboard showing which accounts work and which do not.
 - Runs on Windows or Linux with no separate database server.
 
 ## Requirements
@@ -28,8 +31,9 @@ the download, archive creation, and temporary download link.
 - One or more Steam accounts that can access the games and Workshop items.
 - Enough free disk space for SteamCMD's Workshop cache and generated ZIP files.
 
-The Python dependencies are small: Flask provides the web application and
-Waitress runs the production HTTP server.
+The Python dependencies are small: Flask provides the web application,
+Waitress runs the production HTTP server and `cryptography` encrypts stored
+Steam credentials.
 
 ## Quick setup on Windows
 
@@ -185,34 +189,79 @@ in screenshots and browser history.
 
 | Setting | Purpose |
 | --- | --- |
-| `web_api_key` | Steam Web API key used only to scan owned games at startup. Create it at `steamcommunity.com/dev/apikey`. |
-| `[[steam.accounts]]` | Repeat this block for every Steam account the service may use. |
-| `name` | Safe label written to logs when this account is selected. |
+| `web_api_key` | Optional Steam Web API key used to scan each account's owned games. Create it at `steamcommunity.com/dev/apikey`. |
+| `[[steam.accounts]]` | Optional. Each block is imported once into the account pool on startup. |
+| `name` | Public display name for the imported account. |
 | `username` / `password` | SteamCMD login for this account. |
 | `guard_code` | Optional Steam Guard code. Leave blank unless SteamCMD requires one. |
-| `steam_id` | Account's 64-bit SteamID, used to read its owned-game list. |
+| `steam_id` | Optional 64-bit SteamID. It is normally read from SteamCMD's login output. |
 
-At startup the service scans every configured account's owned games, checks
-which titles advertise **Steam Workshop**, and lists those titles in the game
-selector. For each title it selects the first configured account that owns it
-when downloading. A Steam Web API key and `steam_id` are required for the scan.
-Each scanned account's Steam **Game details** privacy setting must be **Public**;
-the Steam Web API otherwise returns an empty owned-game list even when the
-account has games. In Steam, open **Profile → Edit Profile → Privacy Settings**
-and set **Game details** to **Public**. This setting applies to each account
-separately, including every account in a Steam Family.
-Before scanning, SteamCMD validates every configured account's login. The
-service log reports each account's label, masked login name, configured SteamID,
-authentication result, and API owned-game count; it never logs passwords or
-Steam Guard codes. An account with a bad password or incomplete Steam Guard
-challenge is excluded from the catalogue scan.
-If the scan is unavailable (for example, the owned-games list is private), the
-manual `[[games]]` entries remain available and the first configured account is
-used instead.
+Steam accounts now live in the database (see **Community account pool**
+below). On startup, every `[[steam.accounts]]` entry (or the single
+`[steam]` username/password) is imported into the pool once. After the accounts
+show up in `/admin`, remove their passwords from `config.toml`.
 
-Steam credentials are stored as plain text in `config.toml`. That file is
-ignored by Git and must never be committed, uploaded, or shared. A separate
-Steam account dedicated to this service is strongly recommended.
+With `web_api_key` set, every account check also reads the account's owned
+games through the Steam Web API. The Store API then tells which of them
+advertise **Steam Workshop**, and those titles are added to the game selector
+automatically. Store answers are cached, so each game is looked up once. The
+account's Steam **Game details** privacy setting must be **Public** for this
+(**Profile → Edit Profile → Privacy Settings**). Accounts with a private
+library still work for the configured `[[games]]`, and for Workshop games that
+were already found in other libraries.
+
+## Community account pool
+
+Every download uses an account from a shared pool that owns the selected game.
+Users add accounts under **Share a Steam account** on the main page.
+
+1. A user enters a public display name, a Steam login and password, and
+   optionally an emailed Steam Guard code. The site password is required.
+2. The account is stored encrypted with status **validating**. The worker logs
+   in with SteamCMD between downloads, runs `app_status` for the known games,
+   and scans the library when a Web API key is set. The browser shows the
+   result when the check finishes.
+3. An account that logs in and owns at least one supported game becomes
+   **working**. A wrong password, a Steam Guard block, a disabled account or
+   owning none of the games marks it **broken**.
+4. Working accounts are re-checked every `check_interval_minutes` (default
+   15). Rate limits and Steam outages are retried after 5 minutes, and an
+   account is only flagged broken after 3 of these failures in a row. Broken
+   accounts are retried every `broken_recheck_minutes` (default 6 hours).
+5. Downloads rotate between working accounts that own the game, using the
+   least recently used account first. If a login fails during a download, the
+   next account is tried and the failed one is queued for a re-check.
+
+Public pages show only display names, status, games and check times. Logins
+and passwords are never returned to visitors. A login that is already working
+or waiting for validation cannot be submitted again, so nobody can overwrite
+its password. A **broken** account can be resubmitted with a corrected
+password.
+
+A Steam Guard code is used once and then discarded. Accounts protected by
+mobile-app approval usually cannot be used: SteamCMD has to be stopped after
+`login_timeout_seconds`, and the account is flagged broken.
+
+### Admin dashboard
+
+After entering admin mode with `/?admin=YOUR_ADMIN_PASSWORD`, open `/admin`.
+The dashboard shows every account with its Steam login (never the password),
+SteamID and library visibility, status, failure reason, last SteamCMD output,
+owned games, and its last, next and most recent use times. It also shows how
+many working accounts cover each game. Accounts can be re-checked immediately,
+disabled, enabled again or deleted.
+
+### Credential encryption
+
+Logins and passwords are encrypted with a key from
+`[security].credentials_key`. If that setting is empty, the key is generated in
+`data/credentials.key`. Back up the key privately. Without it, stored accounts
+cannot be decrypted and must be submitted again.
+
+Each check is a real Steam login. Many accounts at a 15-minute interval mean
+many logins from one IP address, and Steam may answer with rate limits. If the
+dashboard shows repeated `Steam rate limit reached` retries, raise
+`check_interval_minutes`.
 
 ### Storage
 
@@ -435,7 +484,7 @@ SteamCMD on `PATH` or put its full path in `[steam.linux].steamcmd_path`.
 
 ### Steam login fails
 
-- Confirm the login name and password in `config.toml`.
+- Open `/admin` and expand **SteamCMD output** for the affected account.
 - Start SteamCMD manually once and complete any Steam Guard or account prompts.
 - Update `guard_code` if SteamCMD explicitly asks for a current code.
 - Confirm the account owns or can access the selected game.

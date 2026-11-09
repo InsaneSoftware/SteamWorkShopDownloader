@@ -11,9 +11,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
+from .accounts import AccountPool
 from .config import Config
 from .database import Database, utc_now
-from .steamcmd import SteamCmd
+from .steamcmd import SteamCmdError
 
 
 log = logging.getLogger(__name__)
@@ -48,11 +49,11 @@ def exclusive_file_lock(path: Path) -> Iterator[None]:
 
 
 class QueueWorker:
-    def __init__(self, config: Config, database: Database, steamcmd: SteamCmd | None = None, account_for=None):
+    def __init__(self, config: Config, database: Database, pool: AccountPool):
         self.config = config
         self.database = database
-        self.steamcmd = steamcmd or SteamCmd(config)
-        self.account_for = account_for
+        self.pool = pool
+        self.steamcmd = pool.steamcmd
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock_path = config.data_dir / "single-worker.lock"
@@ -78,6 +79,12 @@ class QueueWorker:
                     recovered = True
                 self._expire_files()
                 self._prune_old_workshop_content()
+                # One account check per loop keeps downloads and checks
+                # interleaved; SteamCMD can only run once at a time.
+                try:
+                    self.pool.check_due_account()
+                except Exception:
+                    log.exception("Account check failed")
                 job = self.database.claim_next()
                 if job:
                     self._process(job)
@@ -86,14 +93,7 @@ class QueueWorker:
     def _process(self, job: dict) -> None:
         job_id = job["id"]
         try:
-            source_dir = self.steamcmd.download(
-                job["app_id"],
-                job["workshop_id"],
-                lambda value, message: self.database.update_job(
-                    job_id, progress=value, message=message
-                ),
-                account=self.account_for(job["app_id"]) if self.account_for else None,
-            )
+            source_dir = self._download_with_pool(job)
             self.database.update_job(
                 job_id, status="packing", progress=78, message="Creating ZIP archive"
             )
@@ -132,6 +132,37 @@ class QueueWorker:
                 error=str(exc)[-4000:],
                 completed_at=utc_now(),
             )
+
+    def _download_with_pool(self, job: dict) -> Path:
+        job_id = job["id"]
+        accounts = self.pool.accounts_for_app(job["app_id"])
+        if not accounts:
+            raise RuntimeError(
+                f"No working Steam account in the pool owns {job['game_name']}."
+            )
+        last_error: Exception | None = None
+        for account in accounts[:3]:
+            self.database.update_job(
+                job_id, message=f"Downloading via {account['display_name']}"
+            )
+            self.pool.mark_used(account["id"])
+            try:
+                return self.steamcmd.download(
+                    job["app_id"],
+                    job["workshop_id"],
+                    lambda value, message: self.database.update_job(
+                        job_id, progress=value, message=message
+                    ),
+                    self.pool.credentials(account),
+                )
+            except SteamCmdError as exc:
+                if not exc.login_failed:
+                    raise
+                # Let the checker confirm and flag it; try the next account.
+                log.warning("Login failed for account %s", account["id"][:8])
+                self.pool.request_recheck(account["id"])
+                last_error = exc
+        raise last_error or RuntimeError("No Steam account could log in")
 
     def _make_zip(self, source: Path, destination: Path, workshop_id: str, progress) -> int:
         self.config.archive_dir.mkdir(parents=True, exist_ok=True)

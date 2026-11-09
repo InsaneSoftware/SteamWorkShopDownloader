@@ -14,12 +14,19 @@ x_accel_redirect_prefix = ""
 [security]
 admin_password = "replace-with-a-long-random-token"
 admin_token = "cs.rin.ru"
+# Key that encrypts community Steam logins in the database. Leave empty to
+# auto-generate data/credentials.key on first start (back that file up!).
+credentials_key = ""
 
 [steam]
-# A Steam Web API key is required to scan owned Workshop-enabled titles at startup.
+# Optional Steam Web API key. With it, every account check also scans the
+# account's library and adds its Workshop-enabled games automatically.
 # Create one at https://steamcommunity.com/dev/apikey
 web_api_key = ""
 
+# Optional. Accounts listed here are imported once into the account pool
+# (database) on startup and can then be removed from this file. New accounts
+# are normally added by users on the website.
 [[steam.accounts]]
 name = "main"
 username = "your-steam-login"
@@ -50,6 +57,18 @@ file_ttl_hours = 24
 max_queue_size = 100
 max_archive_gb = 25
 poll_seconds = 1.0
+
+[accounts]
+# Working accounts are re-validated with SteamCMD this often.
+check_interval_minutes = 15
+# Broken accounts are retried less often in case they were fixed.
+broken_recheck_minutes = 360
+# Maximum submitted accounts waiting for their first validation.
+max_pending = 25
+# Kill a SteamCMD login that hangs (e.g. waiting for phone approval).
+login_timeout_seconds = 120
+# Store lookups per check when scanning a new library (Store rate limit).
+max_store_lookups_per_check = 60
 
 [[games]]
 name = "Euro Truck Simulator 2"

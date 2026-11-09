@@ -14,9 +14,12 @@
       <div>
         <h1>Workshop Downloader <small>unofficial</small></h1>
       </div>
-      <div class="worker-state">
-        <span class="worker-dot" aria-hidden="true"></span>
-        <span id="workerLabel">Connecting</span>
+      <div class="topbar-right">
+        <a class="admin-link" id="adminLink" href="/admin" hidden>Admin dashboard</a>
+        <div class="worker-state">
+          <span class="worker-dot" aria-hidden="true"></span>
+          <span id="workerLabel">Connecting</span>
+        </div>
       </div>
     </div>
   </header>
@@ -68,6 +71,65 @@
         No Workshop items are currently queued.
       </div>
       <div id="jobList" class="job-list" aria-live="polite"></div>
+    </section>
+
+    <div class="pool-grid">
+      <section class="forum-panel" aria-labelledby="games-title">
+        <div class="panel-title">
+          <h2 id="games-title">Supported games</h2>
+          <span>working accounts</span>
+        </div>
+        <table class="pool-table">
+          <tbody id="gameRows">
+            <tr><td class="empty-state">Enter the password to load.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="forum-panel" aria-labelledby="accounts-title">
+        <div class="panel-title">
+          <h2 id="accounts-title">Community accounts</h2>
+          <span id="accountSummary">checked every 15 min</span>
+        </div>
+        <div id="accountList" class="account-list">
+          <div class="empty-state">Enter the password to load.</div>
+        </div>
+      </section>
+    </div>
+
+    <section class="forum-panel" aria-labelledby="share-title">
+      <div class="panel-title">
+        <h2 id="share-title">Share a Steam account</h2>
+        <span>validated with SteamCMD</span>
+      </div>
+      <form id="accountForm" class="panel-body" autocomplete="off">
+        <p class="share-note">
+          Use a spare account, not your main one. The login and password are
+          stored encrypted and are never shown on this site; only the display
+          name below is public. Accounts with Steam Guard on the phone app
+          usually cannot be used.
+        </p>
+        <div class="form-row">
+          <label for="displayName">Display name</label>
+          <input class="form-control form-control-sm" id="displayName" maxlength="32" placeholder="Shown publicly, e.g. your forum name" required>
+        </div>
+        <div class="form-row">
+          <label for="steamLogin">Steam login</label>
+          <input class="form-control form-control-sm" id="steamLogin" maxlength="64" autocomplete="off" spellcheck="false" required>
+        </div>
+        <div class="form-row">
+          <label for="steamPassword">Steam password</label>
+          <input class="form-control form-control-sm" id="steamPassword" type="password" maxlength="128" autocomplete="new-password" required>
+        </div>
+        <div class="form-row">
+          <label for="guardCode">Steam Guard code</label>
+          <input class="form-control form-control-sm" id="guardCode" maxlength="5" autocomplete="one-time-code" placeholder="Optional, only if Steam emailed you one">
+        </div>
+        <div class="form-actions">
+          <button class="submit-button btn btn-sm" type="submit">Validate &amp; add</button>
+        </div>
+        <div id="accountMessage" class="form-message" role="status" aria-live="polite"></div>
+      </form>
     </section>
 
   </main>

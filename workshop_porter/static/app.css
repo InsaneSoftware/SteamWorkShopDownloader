@@ -279,3 +279,94 @@ body {
     transition: none !important;
   }
 }
+
+/* ----- Community account pool ----------------------------------------- */
+
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.admin-link { color: var(--link); font-size: 11px; }
+.admin-link[hidden] { display: none; }
+
+.pool-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 14px;
+  align-items: start;
+}
+.pool-grid .forum-panel { margin: 0; }
+
+.pool-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.pool-table td { padding: 7px 11px; border-top: 1px solid var(--border); }
+.pool-table tr:first-child td { border-top: 0; }
+.pool-table tr:nth-child(even) td { background: var(--panel-alt); }
+.pool-table td.count { color: var(--success); text-align: right; white-space: nowrap; }
+.pool-table tr.unsupported td { color: var(--muted); }
+.pool-table tr.unsupported td.count { color: #777e87; }
+
+.account-list { max-height: 420px; overflow-y: auto; }
+.account-row { padding: 9px 11px; border-top: 1px solid var(--border); }
+.account-row:first-child { border-top: 0; }
+.account-row:nth-child(even) { background: var(--panel-alt); }
+.account-head { display: flex; align-items: center; gap: 8px; }
+.account-name { color: var(--link); font-weight: 700; font-size: 12px; overflow-wrap: anywhere; }
+.account-sub { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.account-meta { margin-top: 3px; color: #777e87; font-size: 9px; text-transform: uppercase; }
+.account-row.broken .account-sub { color: #d48a8a; }
+.account-row.disabled { opacity: .6; }
+
+.job-status.working { border-color: #52705c; color: #8bc49e; }
+.job-status.pending { border-color: #796a4e; color: #d9bc82; }
+.job-status.broken { border-color: #7e4c4c; color: #e08a8a; }
+.job-status.disabled { color: var(--muted); }
+
+.share-note {
+  margin: 0 0 12px 137px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+option:disabled { color: #6b7179; }
+
+@media (max-width: 650px) {
+  .pool-grid { grid-template-columns: 1fr; }
+  .share-note { margin-left: 0; }
+  .topbar-right { flex-direction: column; align-items: flex-end; gap: 4px; }
+}
+
+.pool-grid { margin: 16px 0 14px; }
+
+/* ----- Admin dashboard ------------------------------------------------ */
+
+.admin-shell { width: min(1200px, calc(100% - 24px)); }
+.stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }
+.stat { padding: 10px 12px; border: 1px solid var(--border); background: var(--panel); }
+.stat-value { display: block; font-size: 20px; font-weight: 700; }
+.stat-label { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+
+.filter-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.filter-tabs button {
+  padding: 2px 8px; border: 1px solid #505760; color: #c3c8ce;
+  background: #2b3036; font-size: 10px; border-radius: 2px;
+}
+.filter-tabs button.active { border-color: #6d829c; color: #fff; background: #435c77; }
+
+.table-scroll { overflow-x: auto; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.admin-table th {
+  padding: 6px 10px; color: var(--muted); font-size: 10px; font-weight: 700;
+  text-align: left; text-transform: uppercase; border-bottom: 1px solid var(--border);
+}
+.admin-table td { padding: 9px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+.admin-table tr:nth-child(even) td { background: var(--panel-alt); }
+.admin-table tr.status-disabled td { opacity: .6; }
+.admin-table .mono { font-family: Consolas, monospace; color: #c3c8ce; }
+.admin-table .reason { margin-top: 4px; color: #d48a8a; }
+.admin-table tr.status-working .reason { color: var(--muted); }
+.games-cell { max-width: 260px; color: #c3c8ce; }
+.checks-cell { color: var(--muted); white-space: nowrap; font-size: 10px; }
+.actions-col { width: 1%; white-space: nowrap; }
+.action-stack { display: flex; flex-direction: column; gap: 4px; }
+.admin-message { margin: 0; padding: 0 11px 8px; }
+
+@media (max-width: 650px) {
+  .stat-row { grid-template-columns: repeat(2, 1fr); }
+}
