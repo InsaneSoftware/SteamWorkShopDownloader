@@ -525,6 +525,21 @@ def create_app(
         database.update_account(account_id, **fields)
         return jsonify(ok=True)
 
+    @app.post("/api/admin/accounts/<account_id>/name")
+    def admin_rename(account_id: str):
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        account = database.get_account(account_id)
+        if not account:
+            return jsonify(error="Account not found"), 404
+        payload = request.get_json(silent=True) or {}
+        try:
+            name = pool.rename(account, str(payload.get("display_name", "")))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, display_name=name)
+
     @app.delete("/api/admin/accounts/<account_id>")
     def admin_delete_account(account_id: str):
         auth_error = require_admin_session()

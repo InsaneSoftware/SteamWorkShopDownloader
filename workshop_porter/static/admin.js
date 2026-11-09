@@ -143,7 +143,15 @@ function renderRow(account) {
     act(`/api/admin/accounts/${account.id}`, { method: "DELETE" }, "Account deleted.");
   });
   const stack = el("div", "action-stack");
-  stack.append(recheck, toggle, remove);
+  const rename = el("button", "btn btn-sm btn-outline-secondary", "Rename");
+  rename.addEventListener("click", () => {
+    const name = window.prompt("New public display name (2-32 characters):", account.display_name);
+    if (name === null || name.trim() === account.display_name) return;
+    act(`/api/admin/accounts/${account.id}/name`,
+      { method: "POST", body: JSON.stringify({ display_name: name }) },
+      "Account renamed.");
+  });
+  stack.append(recheck, rename, toggle, remove);
   actions.append(stack);
   row.append(actions);
   return row;

@@ -78,16 +78,33 @@ class AccountPool:
 
     # ----- submission ---------------------------------------------------
 
-    def submit(
-        self, display_name: str, username: str, password: str, guard_code: str = ""
-    ) -> tuple[dict[str, Any], bool]:
+    @staticmethod
+    def clean_display_name(display_name: str) -> str:
         display_name = " ".join(display_name.split())
-        username = username.strip()
-        guard_code = guard_code.strip()
         if not DISPLAY_NAME_RE.fullmatch(display_name):
             raise ValueError(
                 "Display name must be 2-32 characters (letters, numbers, spaces, . - _)"
             )
+        return display_name
+
+    def rename(self, account: dict[str, Any], display_name: str) -> str:
+        display_name = self.clean_display_name(display_name)
+        try:
+            username = self.vault.decrypt(account["username_enc"])
+        except RuntimeError:
+            username = ""
+        # The display name is public, so it must never reveal the login.
+        if display_name.lower() == username.lower():
+            raise ValueError("The display name cannot be the Steam login")
+        self.database.update_account(account["id"], display_name=display_name)
+        return display_name
+
+    def submit(
+        self, display_name: str, username: str, password: str, guard_code: str = ""
+    ) -> tuple[dict[str, Any], bool]:
+        display_name = self.clean_display_name(display_name)
+        username = username.strip()
+        guard_code = guard_code.strip()
         if not USERNAME_RE.fullmatch(username):
             raise ValueError("That does not look like a Steam login name")
         if not 1 <= len(password) <= 128:

@@ -241,6 +241,22 @@ class AccountPoolTests(unittest.TestCase):
         status = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]["status"]
         self.assertEqual(status, "disabled")
         self.assertEqual(client.post(f"{url}/recheck", headers=FETCH).status_code, 200)
+        # Rename: validated, cannot expose the login, needs the fetch header.
+        self.assertEqual(
+            client.post(f"{url}/name", json={"display_name": "New Name"}).status_code, 400
+        )
+        for bad in ("x", "BOB_LOGIN", "<script>"):
+            response = client.post(f"{url}/name", headers=FETCH, json={"display_name": bad})
+            self.assertEqual(response.status_code, 400, bad)
+        response = client.post(f"{url}/name", headers=FETCH, json={"display_name": "  New   Name "})
+        self.assertEqual(response.get_json()["display_name"], "New Name")
+        public = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
+        self.assertEqual(public["display_name"], "New Name")
+        self.assertEqual(
+            client.post("/api/admin/accounts/missing/name", headers=FETCH,
+                        json={"display_name": "Valid"}).status_code, 404
+        )
+
         self.assertEqual(client.delete(url, headers=FETCH).status_code, 200)
         self.assertEqual(client.get(f"/api/accounts/{account_id}", headers=TOKEN).status_code, 404)
 
