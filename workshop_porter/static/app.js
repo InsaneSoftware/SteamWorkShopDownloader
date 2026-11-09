@@ -220,15 +220,33 @@ async function refreshPool() {
   }
 }
 
+let lastGames = [];
+
 function renderGames(games) {
+  lastGames = games;
+  const covered = games.filter((game) => game.accounts > 0).length;
+  document.querySelector("#gamesCount").textContent = covered;
+  const filter = document.querySelector("#gameFilter").value.trim().toLowerCase();
   const rows = document.querySelector("#gameRows");
   rows.replaceChildren();
-  games
+  const visible = games.filter((game) => !filter || game.name.toLowerCase().includes(filter));
+  if (!visible.length) {
+    const row = el("tr");
+    row.append(el("td", "empty-state", filter ? "No game matches that filter." : "No games yet."));
+    rows.append(row);
+  }
+  visible
     .slice()
     .sort((a, b) => b.accounts - a.accounts || a.name.localeCompare(b.name))
     .forEach((game) => {
       const row = el("tr", game.accounts ? "" : "unsupported");
-      row.append(el("td", "", game.name));
+      const name = el("td");
+      const link = el("a", "game-link", game.name);
+      link.href = `https://store.steampowered.com/app/${game.app_id}/`;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      name.append(link);
+      row.append(name);
       const count = el("td", "count",
         game.accounts ? `${game.accounts} account${game.accounts === 1 ? "" : "s"}` : "none yet");
       row.append(count);
@@ -254,6 +272,7 @@ function renderGames(games) {
 function renderAccounts(accounts, interval) {
   const list = document.querySelector("#accountList");
   const working = accounts.filter((a) => a.status === "working").length;
+  document.querySelector("#accountsCount").textContent = `${working}/${accounts.length}`;
   document.querySelector("#accountSummary").textContent =
     `${working} of ${accounts.length} working · checked every ${interval} min`;
   list.replaceChildren();
@@ -363,3 +382,33 @@ refreshQueue();
 refreshPool();
 window.setInterval(refreshQueue, 2500);
 window.setInterval(refreshPool, 15000);
+tokenInput.addEventListener("change", () => { refreshQueue(); refreshPool(); showView(); });
+
+// ----- Menu bar -------------------------------------------------------
+
+const VIEWS = ["download", "games", "accounts", "share"];
+
+function showView() {
+  const requested = window.location.hash.slice(1);
+  const view = VIEWS.includes(requested) ? requested : "download";
+  document.querySelectorAll(".view").forEach((section) => {
+    section.hidden = section.dataset.view !== view;
+  });
+  document.querySelectorAll(".menu-link[data-view]").forEach((link) => {
+    const active = link.dataset.view === view;
+    link.classList.toggle("active", active);
+    if (active) {
+      link.setAttribute("aria-current", "page");
+      // On narrow screens the menu scrolls sideways; keep the open tab visible.
+      link.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
+  document.querySelector("#tokenHint").hidden =
+    view === "download" || Boolean(tokenInput.value.trim());
+}
+
+window.addEventListener("hashchange", showView);
+document.querySelector("#gameFilter").addEventListener("input", () => renderGames(lastGames));
+showView();

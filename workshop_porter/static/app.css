@@ -334,6 +334,77 @@ option:disabled { color: #6b7179; }
 
 .pool-grid { margin: 16px 0 14px; }
 
+/* ----- Menu bar ------------------------------------------------------- */
+
+.menubar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid #08090a;
+  background: #2a2e34;
+  box-shadow: 0 1px 0 var(--border), 0 2px 6px #0006;
+}
+.menubar-inner {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.menubar-inner::-webkit-scrollbar { display: none; }
+.menu-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 13px 8px;
+  border-bottom: 2px solid transparent;
+  color: #b9bec6;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.menu-link:hover { color: #fff; background: #ffffff0a; }
+.menu-link.active { color: #fff; border-bottom-color: var(--accent); }
+.menu-link:focus-visible { outline: 2px solid #718aa8; outline-offset: -2px; }
+.menu-count {
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  color: #c9d6e6;
+  background: #435c77;
+  font-size: 10px;
+  text-align: center;
+}
+.menu-count:empty { display: none; }
+.menu-cta { margin-left: auto; color: var(--success); }
+.menu-cta.active { border-bottom-color: var(--success); }
+.menu-admin { color: var(--link); }
+.menu-admin[hidden] { display: none; }
+
+.view[hidden] { display: none; }
+.view-note { margin: -4px 2px 16px; color: var(--muted); font-size: 11px; }
+.view-note a, .token-hint a { color: var(--link); }
+.token-hint {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid #796a4e;
+  color: #d9bc82;
+  background: #2b2720;
+  font-size: 11px;
+}
+.token-hint[hidden] { display: none; }
+.game-filter { max-width: 200px; height: 24px; font-size: 11px; }
+.game-link { color: var(--text); text-decoration: none; }
+.game-link:hover { color: var(--link); text-decoration: underline; }
+.pool-table tr.unsupported .game-link { color: var(--muted); }
+#accountList.account-list { max-height: none; }
+
+@media (max-width: 650px) {
+  .menu-link { padding: 9px 10px 7px; font-size: 11px; }
+  .menu-cta { margin-left: 0; }
+}
+
 /* ----- Admin dashboard ------------------------------------------------ */
 
 .admin-shell { width: min(1200px, calc(100% - 24px)); }

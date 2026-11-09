@@ -14,17 +14,33 @@
       <div>
         <h1>Workshop Downloader <small>unofficial</small></h1>
       </div>
-      <div class="topbar-right">
-        <a class="admin-link" id="adminLink" href="/admin" hidden>Admin dashboard</a>
-        <div class="worker-state">
-          <span class="worker-dot" aria-hidden="true"></span>
-          <span id="workerLabel">Connecting</span>
-        </div>
+      <div class="worker-state">
+        <span class="worker-dot" aria-hidden="true"></span>
+        <span id="workerLabel">Connecting</span>
       </div>
     </div>
   </header>
 
+  <nav class="menubar" aria-label="Sections">
+    <div class="container-shell menubar-inner">
+      <a class="menu-link" href="#download" data-view="download">Download</a>
+      <a class="menu-link" href="#games" data-view="games">
+        Supported games <span class="menu-count" id="gamesCount"></span>
+      </a>
+      <a class="menu-link" href="#accounts" data-view="accounts">
+        Accounts <span class="menu-count" id="accountsCount"></span>
+      </a>
+      <a class="menu-link menu-cta" href="#share" data-view="share">Share an account</a>
+      <a class="menu-link menu-admin" id="adminLink" href="/admin" hidden>Admin</a>
+    </div>
+  </nav>
+
   <main class="container-shell">
+    <div id="tokenHint" class="token-hint" hidden>
+      Enter the site password on the <a href="#download">Download</a> tab to load this.
+    </div>
+
+    <div class="view" data-view="download">
     <section class="forum-panel" aria-labelledby="request-title">
       <div class="panel-title">
         <h2 id="request-title">Request a Workshop item</h2>
@@ -72,12 +88,13 @@
       </div>
       <div id="jobList" class="job-list" aria-live="polite"></div>
     </section>
+    </div>
 
-    <div class="pool-grid">
+    <div class="view" data-view="games" hidden>
       <section class="forum-panel" aria-labelledby="games-title">
         <div class="panel-title">
           <h2 id="games-title">Supported games</h2>
-          <span>working accounts</span>
+          <input class="form-control form-control-sm game-filter" id="gameFilter" type="search" placeholder="Filter games" aria-label="Filter games">
         </div>
         <table class="pool-table">
           <tbody id="gameRows">
@@ -85,7 +102,12 @@
           </tbody>
         </table>
       </section>
+      <p class="view-note">
+        Missing a game? <a href="#share">Share an account</a> that owns it.
+      </p>
+    </div>
 
+    <div class="view" data-view="accounts" hidden>
       <section class="forum-panel" aria-labelledby="accounts-title">
         <div class="panel-title">
           <h2 id="accounts-title">Community accounts</h2>
@@ -95,8 +117,12 @@
           <div class="empty-state">Enter the password to load.</div>
         </div>
       </section>
+      <p class="view-note">
+        Thanks to everyone sharing an account. <a href="#share">Add yours</a>.
+      </p>
     </div>
 
+    <div class="view" data-view="share" hidden>
     <section class="forum-panel" aria-labelledby="share-title">
       <div class="panel-title">
         <h2 id="share-title">Share a Steam account</h2>
@@ -131,6 +157,7 @@
         <div id="accountMessage" class="form-message" role="status" aria-live="polite"></div>
       </form>
     </section>
+    </div>
 
   </main>
 
