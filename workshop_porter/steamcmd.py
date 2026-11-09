@@ -20,6 +20,18 @@ APP_STATUS_RE = re.compile(r"^AppID (\d+)\b")
 ACCOUNT_ID_RE = re.compile(r"\[U:1:(\d+)\]")
 STEAM_ID64_BASE = 76561197960265728
 LOGIN_OK_MARKERS = ("waiting for user info...ok", "logged in ok")
+# Linux SteamCMD colours its output, e.g. "Waiting for user info...\x1b[0mOK".
+# Some builds lose the ESC byte, leaving a bare "[0m", so strip both forms.
+ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][A-Za-z0-9]|\[[0-9;]*m")
+
+
+def strip_ansi(value: str) -> str:
+    return ANSI_RE.sub("", value)
+
+
+def login_succeeded(line: str) -> bool:
+    line = strip_ansi(line).lower()
+    return any(marker in line for marker in LOGIN_OK_MARKERS)
 
 # (substring in lowercased output, short public reason, transient?)
 # Order matters: the first matching rule wins.
@@ -254,15 +266,13 @@ class SteamCmd:
         try:
             assert process.stdout is not None
             for raw_line in process.stdout:
-                line = self._redact(raw_line.strip(), account)
+                line = self._redact(strip_ansi(raw_line).strip(), account)
                 if not line:
                     continue
                 lines.append(line)
                 if len(lines) > keep_lines:
                     del lines[: len(lines) - keep_lines]
-                if not logged_in.is_set() and any(
-                    marker in line.lower() for marker in LOGIN_OK_MARKERS
-                ):
+                if not logged_in.is_set() and login_succeeded(line):
                     logged_in.set()
                 if on_line:
                     on_line(line)
@@ -328,7 +338,7 @@ class SteamCmd:
 
 def classify_login_failure(lines: list[str], timed_out: bool) -> tuple[str, bool]:
     """Return ``(public reason, transient)`` for a failed SteamCMD login."""
-    text = "\n".join(lines).lower()
+    text = strip_ansi("\n".join(lines)).lower()
     for needle, reason, transient in LOGIN_FAILURES:
         if needle in text:
             return reason, transient
@@ -342,6 +352,7 @@ def parse_owned_apps(lines: list[str]) -> list[int]:
     owned: list[int] = []
     current: int | None = None
     for line in lines:
+        line = strip_ansi(line).strip()
         match = APP_STATUS_RE.match(line)
         if match:
             current = int(match.group(1))

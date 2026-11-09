@@ -11,8 +11,10 @@ from workshop_porter.config import Game, SteamAccount
 from workshop_porter.steamcmd import (
     AccountCheck,
     classify_login_failure,
+    login_succeeded,
     parse_owned_apps,
     parse_steam_id,
+    strip_ansi,
 )
 from workshop_porter.web import create_app
 
@@ -270,6 +272,25 @@ class SteamCmdParsingTests(unittest.TestCase):
             "- release state: unknown (No License)",
         ]
         self.assertEqual(parse_owned_apps(lines), [440])
+
+    def test_linux_colour_codes(self) -> None:
+        # Real Linux SteamCMD output, with and without the ESC byte.
+        for esc in ("\x1b", ""):
+            lines = [
+                f"{esc}[0m{esc}[1mLogging in using username/password.",
+                f"{esc}[0mLogging in user '[redacted]' [U:1:1894856631] to Steam Public...{esc}[0mOK",
+                f"{esc}[0mWaiting for user info...{esc}[0mOK",
+                f"{esc}[0mAppID 227300 (Euro Truck Simulator 2):",
+                "- release state: released (No License)",
+                f"{esc}[0mAppID 294100 (RimWorld):",
+                "- release state: released (Subscribed,Permanent,)",
+            ]
+            self.assertTrue(login_succeeded(lines[2]), repr(esc))
+            self.assertFalse(login_succeeded(lines[0]))
+            self.assertEqual(parse_owned_apps(lines), [294100])
+            self.assertEqual(parse_steam_id(lines), str(76561197960265728 + 1894856631))
+            self.assertEqual(strip_ansi(lines[1]),
+                             "Logging in user '[redacted]' [U:1:1894856631] to Steam Public...OK")
 
     def test_steam_id(self) -> None:
         self.assertEqual(
