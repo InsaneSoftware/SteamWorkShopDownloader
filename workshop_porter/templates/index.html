@@ -131,9 +131,8 @@
       <form id="accountForm" class="panel-body" autocomplete="off">
         <p class="share-note">
           Use a spare account, not your main one. The login and password are
-          stored encrypted and are never shown on this site; only the display
-          name below is public. Accounts with Steam Guard on the phone app
-          usually cannot be used.
+          stored encrypted and are never shown on this site. Only the display
+          name below is public.
         </p>
         <div class="form-row">
           <label for="displayName">Display name</label>
@@ -149,8 +148,18 @@
         </div>
         <div class="form-row">
           <label for="guardCode">Steam Guard code</label>
-          <input class="form-control form-control-sm" id="guardCode" maxlength="5" autocomplete="one-time-code" placeholder="Optional, only if Steam emailed you one">
+          <input class="form-control form-control-sm" id="guardCode" maxlength="5" autocomplete="one-time-code" placeholder="Optional, only needed the first time">
         </div>
+        <p class="share-note guard-note">
+          The code is only needed once. The server remembers the login after that.
+          Codes from the Steam app expire after about 30 seconds, so type a fresh
+          one and submit right away.
+        </p>
+        <p class="share-note guard-busy" id="guardBusy" hidden>
+          A download is running right now. Your account is checked as soon as it
+          finishes, which may be too late for a code from the Steam app. An
+          emailed code, or waiting until the status says "Standing by", is safer.
+        </p>
         <div class="form-actions">
           <button class="submit-button btn btn-sm" type="submit">Validate &amp; add</button>
         </div>

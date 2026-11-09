@@ -47,7 +47,7 @@ class CredentialVault:
             return self._fernet.decrypt(value.encode("ascii")).decode("utf-8")
         except InvalidToken as exc:
             raise RuntimeError(
-                "Stored credentials cannot be decrypted; the credentials key changed"
+                "Stored credentials cannot be decrypted. The credentials key changed."
             ) from exc
 
     def fingerprint(self, username: str) -> str:

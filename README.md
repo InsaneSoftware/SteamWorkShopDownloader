@@ -198,8 +198,10 @@ in screenshots and browser history.
 
 Steam accounts now live in the database (see **Community account pool**
 below). On startup, every `[[steam.accounts]]` entry (or the single
-`[steam]` username/password) is imported into the pool once. After the accounts
-show up in `/admin`, remove their passwords from `config.toml`.
+`[steam]` username/password) is imported into the pool once. From then on the
+database is in charge. Renaming, disabling or deleting an account in `/admin`
+is never undone by `config.toml`, even after a restart. After the accounts show
+up in `/admin`, remove their passwords from `config.toml`.
 
 With `web_api_key` set, every account check also reads the account's owned
 games through the Steam Web API. The Store API then tells which of them
@@ -460,7 +462,7 @@ no per-ZIP or global download limit.
 
 ```text
 config.toml                 Private local configuration and credentials
-config.example.toml         Configuration template; replace every credential
+config.example.toml         Configuration template. Replace every credential
 data/jobs.sqlite3           Queue database
 data/archives/              Temporary ZIP downloads
 SteamCMD/steamapps/         SteamCMD Workshop cache

@@ -22,6 +22,9 @@ log = logging.getLogger(__name__)
 MAX_TRANSIENT_FAILURES = 3
 RETRY_MINUTES = 5
 MAX_CATALOGUE_PROBES = 300
+GUARD_CODE_REJECTED = (
+    "Steam Guard code was wrong or expired. Share the account again with a new code."
+)
 
 DISPLAY_NAME_RE = re.compile(r"^[\w .\-\[\]()|]{2,32}$", re.UNICODE)
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.@\-]{2,64}$")
@@ -138,11 +141,21 @@ class AccountPool:
         }
 
     def import_config_accounts(self) -> None:
-        """Move [steam] / [[steam.accounts]] logins from config.toml into the pool."""
+        """Move [steam] / [[steam.accounts]] logins from config.toml into the pool.
+
+        Each login is imported only once, ever. After that the database is the
+        source of truth: renames, disables and deletions in the admin dashboard
+        are never undone by config.toml on a restart.
+        """
         for account in self.config.steam_accounts:
             if account.username.lower() in PLACEHOLDER_USERNAMES or not account.password:
                 continue
-            if self.database.account_exists(self.vault.fingerprint(account.username)):
+            fingerprint = self.vault.fingerprint(account.username)
+            if self.database.config_import_done(fingerprint):
+                continue
+            if self.database.account_exists(fingerprint):
+                # Imported before this bookkeeping existed (or shared on the site).
+                self.database.mark_config_imported(fingerprint)
                 continue
             name = account.name if account.name != account.username else "Server account"
             name = name if DISPLAY_NAME_RE.fullmatch(name) else "Server account"
@@ -153,6 +166,7 @@ class AccountPool:
                 ),
                 max_pending=10**6,
             )
+            self.database.mark_config_imported(fingerprint)
             log.info("Imported config.toml Steam account %r into the account pool", name)
 
     # ----- checks -------------------------------------------------------
@@ -199,7 +213,12 @@ class AccountPool:
         if account.get("guard_code_enc"):
             self.database.update_account(account_id, guard_code_enc=None)
         if not result.logged_in:
-            self._failure(account, result.reason, result.detail, result.transient)
+            reason, transient = result.reason, result.transient
+            if account.get("guard_code_enc") and "Steam Guard" in reason:
+                # The code was used and is gone; retrying cannot help.
+                reason = GUARD_CODE_REJECTED
+                transient = False
+            self._failure(account, reason, result.detail, transient)
             return self._logged(account)
 
         now = utc_now()

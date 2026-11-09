@@ -441,3 +441,7 @@ option:disabled { color: #6b7179; }
 @media (max-width: 650px) {
   .stat-row { grid-template-columns: repeat(2, 1fr); }
 }
+
+.guard-note { margin-top: -4px; }
+.guard-busy { color: #d9bc82; }
+.guard-busy[hidden] { display: none; }

@@ -183,6 +183,39 @@ class AccountPoolTests(unittest.TestCase):
                  client.get("/api/accounts", headers=TOKEN).get_json()["accounts"]]
         self.assertEqual(names, ["main"])
 
+    def test_config_never_overrides_admin_changes(self) -> None:
+        accounts = (SteamAccount("main", "cfg_login", "cfg_pw", "", ""),)
+        app, client, pool = self.make_app(steam_accounts=accounts)
+        config = app.extensions["workshop_config"]
+        database = app.extensions["workshop_database"]
+
+        def restart_names():
+            create_app(config, start_worker=False, steamcmd=self.steam)
+            return [a["display_name"] for a in database.list_accounts()]
+
+        pool.rename(database.list_accounts()[0], "My Renamed Account")
+        self.assertEqual(restart_names(), ["My Renamed Account"])
+        database.delete_account(database.list_accounts()[0]["id"])
+        self.assertEqual(restart_names(), [])
+
+    def test_guard_codes_are_checked_first(self) -> None:
+        _, client, pool = self.make_app()
+        self.submit(client, "First", "first_l")
+        self.submit(client, "Guarded", "guard_l", guard="AB12C")
+        pool.check_due_account()
+        self.assertEqual(self.steam.calls[0][0].username, "guard_l")
+
+    def test_rejected_guard_code_is_explained(self) -> None:
+        _, client, pool = self.make_app()
+        self.steam.results["guard_l"] = AccountCheck(
+            False, reason="Steam Guard is blocking the login", transient=True)
+        account_id = self.submit(client, "Guarded", "guard_l", guard="AB12C").get_json()["account"]["id"]
+        pool.check_due_account()
+        account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
+        self.assertEqual(account["status"], "broken")
+        self.assertIn("Steam Guard code was wrong or expired", account["status_reason"])
+        self.assertNotIn(";", account["status_reason"])
+
     def test_library_scan_adds_workshop_games(self) -> None:
         api = FakeSteamApi(
             {"76561197960265800": [(107410, "Arma 3"), (4000, "Garry's Mod"), (10, "No Workshop")]},

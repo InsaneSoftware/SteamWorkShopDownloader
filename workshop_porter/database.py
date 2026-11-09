@@ -84,6 +84,14 @@ class Database:
                     workshop INTEGER,
                     checked_at TEXT
                 );
+
+                -- config.toml logins already imported into the pool. They are
+                -- never imported again, so renames and deletions in the admin
+                -- dashboard survive restarts.
+                CREATE TABLE IF NOT EXISTS config_imports (
+                    username_hash TEXT PRIMARY KEY,
+                    imported_at TEXT NOT NULL
+                );
                 """
             )
             columns = {
@@ -302,6 +310,21 @@ class Database:
                 "SELECT 1 FROM accounts WHERE username_hash = ?", (username_hash,)
             ).fetchone() is not None
 
+    def config_import_done(self, username_hash: str) -> bool:
+        with closing(self.connect()) as connection:
+            return connection.execute(
+                "SELECT 1 FROM config_imports WHERE username_hash = ?", (username_hash,)
+            ).fetchone() is not None
+
+    def mark_config_imported(self, username_hash: str) -> None:
+        with closing(self.connect()) as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO config_imports (username_hash, imported_at) "
+                "VALUES (?, ?)",
+                (username_hash, utc_now()),
+            )
+            connection.commit()
+
     def get_account(self, account_id: str) -> dict[str, Any] | None:
         with closing(self.connect()) as connection:
             return self._account(
@@ -326,14 +349,18 @@ class Database:
             return [self._account(row) for row in rows]
 
     def next_due_account(self, now: str) -> dict[str, Any] | None:
-        """Pending validations first, then the most overdue periodic check."""
+        """Accounts with a fresh Steam Guard code first (codes expire fast),
+        then other pending validations, then the most overdue periodic check."""
         with closing(self.connect()) as connection:
             row = connection.execute(
                 """
                 SELECT * FROM accounts
                 WHERE enabled = 1 AND next_check_at <= ?
-                ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,
-                         next_check_at
+                ORDER BY CASE
+                    WHEN guard_code_enc IS NOT NULL THEN 0
+                    WHEN status = 'pending' THEN 1
+                    ELSE 2 END,
+                    next_check_at
                 LIMIT 1
                 """,
                 (now,),

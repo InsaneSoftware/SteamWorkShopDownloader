@@ -83,6 +83,8 @@ async function refreshQueue() {
       ["downloading", "packing"].includes(job.status)
     );
     workerLabel.textContent = busy ? "Processing" : "Standing by";
+    workerBusy = busy;
+    updateGuardWarning();
     workerDot.className = busy ? "worker-dot busy" : "worker-dot";
   } catch (error) {
     workerLabel.textContent = offlineText(error);
@@ -412,3 +414,14 @@ function showView() {
 window.addEventListener("hashchange", showView);
 document.querySelector("#gameFilter").addEventListener("input", () => renderGames(lastGames));
 showView();
+
+// ----- Steam Guard timing warning -------------------------------------
+
+var workerBusy = false;
+const guardInput = document.querySelector("#guardCode");
+
+function updateGuardWarning() {
+  document.querySelector("#guardBusy").hidden = !(workerBusy && guardInput.value.trim());
+}
+
+guardInput.addEventListener("input", updateGuardWarning);
