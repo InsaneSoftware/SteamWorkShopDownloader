@@ -10,6 +10,10 @@ from urllib.parse import parse_qs, urlparse
 from workshop_porter.config import Game, SteamAccount
 from workshop_porter.steamcmd import (
     AccountCheck,
+    AppInfo,
+    License,
+    PicsParser,
+    parse_licenses,
     classify_login_failure,
     login_succeeded,
     parse_owned_apps,
@@ -33,9 +37,21 @@ class FakeSteam:
         self.results: dict[str, AccountCheck] = {}
         self.calls: list[tuple[SteamAccount, list[int]]] = []
 
+        # inspect_library data: package -> apps, app -> AppInfo
+        self.packages: dict[int, list[int]] = {}
+        self.app_info: dict[int, AppInfo] = {}
+        self.inspections: list[tuple[list[int], list[int]]] = []
+
     def check_account(self, account, app_ids):
         self.calls.append((account, app_ids))
         return self.results.get(account.username, AccountCheck(True, [107410]))
+
+    def inspect_library(self, account, package_ids, app_ids):
+        self.inspections.append((list(package_ids), list(app_ids)))
+        return (
+            {p: self.packages[p] for p in package_ids if p in self.packages},
+            {a: self.app_info[a] for a in app_ids if a in self.app_info},
+        )
 
 
 class FakeSteamApi:
@@ -216,6 +232,55 @@ class AccountPoolTests(unittest.TestCase):
         self.assertIn("Steam Guard code was wrong or expired", account["status_reason"])
         self.assertNotIn(";", account["status_reason"])
 
+    def test_library_read_from_licenses(self) -> None:
+        # No Web API key and nothing in [[games]] owned: the licences decide.
+        _, client, pool = self.make_app()
+        self.steam.results["lib_l"] = AccountCheck(True, [], licenses=[
+            License(1, True, [1118520, 1118521], True),       # Paralives + DLC
+            License(2, True, [4000, 5, 7], False),            # cut short
+            License(3, False, [646570], True),                # expired licence
+        ])
+        self.steam.packages = {2: [4000, 5, 7, 294100]}
+        self.steam.app_info = {
+            1118520: AppInfo("Paralives", "game", True),
+            1118521: AppInfo("Paralives Soundtrack", "music", False),
+            4000: AppInfo("Garry's Mod", "game", True),
+            294100: AppInfo("RimWorld", "game", True),
+            5: AppInfo("Dedicated Server", "tool", False),
+        }
+        account_id = self.submit(client, "Library", "lib_l").get_json()["account"]["id"]
+        pool.check_due_account()
+
+        packages, apps = self.steam.inspections[0]
+        self.assertEqual(packages, [2])            # only the cut-short licence
+        self.assertNotIn(646570, apps)             # expired licences are ignored
+        account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
+        # RimWorld came from the full package list, so it is looked up next time.
+        self.assertEqual([g["name"] for g in account["games"]], ["Garry's Mod", "Paralives"])
+
+        pool.request_recheck(account_id)
+        pool.check_due_account()
+        account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
+        self.assertEqual(account["status"], "working")
+        self.assertEqual([g["name"] for g in account["games"]],
+                         ["Garry's Mod", "Paralives", "RimWorld"])
+        games = {g["name"] for g in client.get("/api/games", headers=TOKEN).get_json()["games"]}
+        self.assertTrue({"Paralives", "RimWorld", "Garry's Mod"} <= games)
+
+        # Everything is cached now: a recheck needs no second SteamCMD run.
+        runs = len(self.steam.inspections)
+        pool.request_recheck(account_id)
+        pool.check_due_account()
+        self.assertEqual(len(self.steam.inspections), runs)
+
+        # A newly bought game shows up on the next check.
+        self.steam.results["lib_l"].licenses.append(License(4, True, [646570], True))
+        self.steam.app_info[646570] = AppInfo("Slay the Spire", "game", True)
+        pool.request_recheck(account_id)
+        pool.check_due_account()
+        account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
+        self.assertIn("Slay the Spire", [g["name"] for g in account["games"]])
+
     def test_library_scan_adds_workshop_games(self) -> None:
         api = FakeSteamApi(
             {"76561197960265800": [(107410, "Arma 3"), (4000, "Garry's Mod"), (10, "No Workshop")]},
@@ -305,6 +370,36 @@ class SteamCmdParsingTests(unittest.TestCase):
             "- release state: unknown (No License)",
         ]
         self.assertEqual(parse_owned_apps(lines), [440])
+
+    def test_licenses_and_pics(self) -> None:
+        lines = [
+            "\x1b[0mLicense packageID 17906:",
+            " - State   : Active (flags 0x0) - Purchased : Tue Nov 10 2026 in \"\", None",
+            " - Apps\t: 5, 7, 90, ... (737 in total)",
+            "License packageID 42:",
+            " - State   : Expired (flags 0x2)",
+            " - Apps\t: 646570,  (1 in total)",
+        ]
+        licenses = parse_licenses(lines)
+        self.assertEqual([(l.package_id, l.active, l.app_ids, l.complete) for l in licenses],
+                         [(17906, True, [5, 7, 90], False), (42, False, [646570], True)])
+
+        parser = PicsParser()
+        for line in [
+            "PackageID : 17906, change number : 1/1", '"17906"', "{",
+            '"packageid"\t\t"17906"', '"appids"', "{", '"0"\t\t"5"', '"1"\t\t"440"', "}",
+            '"depotids"', "{", '"0"\t\t"1"', "}", "}",
+            "\x1b[0mAppID : 440, change number : 1/1", '"440"', "{", '"common"', "{",
+            '"name"\t\t"Team Fortress 2"', '"type"\t\t"Game"', '"associations"', "{",
+            '"0"', "{", '"type"\t\t"developer"', '"name"\t\t"Valve"', "}", "}",
+            '"workshop_visible"\t\t"1"', "}", "}",
+            "AppID : 1118521, change number : 1/1", '"1118521"', "{", '"common"', "{",
+            '"name"\t\t"Soundtrack"', '"type"\t\t"Music"', '"workshop_visible"\t\t"1"', "}", "}",
+        ]:
+            parser.feed(line)
+        self.assertEqual(parser.packages, {17906: [5, 440]})
+        self.assertEqual(parser.apps[440], AppInfo("Team Fortress 2", "game", True))
+        self.assertFalse(parser.apps[1118521].workshop)
 
     def test_linux_colour_codes(self) -> None:
         # Real Linux SteamCMD output, with and without the ESC byte.

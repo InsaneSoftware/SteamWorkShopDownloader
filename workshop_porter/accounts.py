@@ -11,7 +11,7 @@ from urllib.request import urlopen
 from . import catalog
 from .config import Config, SteamAccount
 from .database import Database, utc_now
-from .steamcmd import SteamCmd
+from .steamcmd import License, SteamCmd
 from .vault import CredentialVault
 
 
@@ -22,6 +22,9 @@ log = logging.getLogger(__name__)
 MAX_TRANSIENT_FAILURES = 3
 RETRY_MINUTES = 5
 MAX_CATALOGUE_PROBES = 300
+# Lookups per check when a library is new. The rest follows 5 minutes later.
+MAX_PACKAGE_LOOKUPS = 100
+MAX_APP_LOOKUPS = 150
 GUARD_CODE_REJECTED = (
     "Steam Guard code was wrong or expired. Share the account again with a new code."
 )
@@ -221,11 +224,15 @@ class AccountPool:
             self._failure(account, reason, result.detail, transient)
             return self._logged(account)
 
-        now = utc_now()
         steam_id = result.steam_id or account.get("steam_id") or ""
         owned = set(result.owned_app_ids)
         library_visible, scan_incomplete = None, False
-        if self.config.steam_web_api_key and steam_id:
+        if result.licenses:
+            # The login itself tells us the library. No public profile needed.
+            library_visible = True
+            library, scan_incomplete = self._library_from_licenses(account, result.licenses)
+            owned |= library
+        elif self.config.steam_web_api_key and steam_id:
             library = catalog.fetch_owned_games(
                 self.config.steam_web_api_key, steam_id, self.opener
             )
@@ -235,6 +242,7 @@ class AccountPool:
                 scan_incomplete = self._scan_store(list(library))
                 owned |= self._workshop_games(library)
 
+        now = utc_now()
         common = dict(
             last_error=None,
             consecutive_failures=0,
@@ -278,6 +286,55 @@ class AccountPool:
                 **common,
             )
         return self._logged(account)
+
+    def _library_from_licenses(
+        self, account: dict[str, Any], licenses: list[License]
+    ) -> tuple[set[int], bool]:
+        """Workshop games the account owns, from its Steam licences.
+
+        Unknown packages and apps are looked up with a second SteamCMD run and
+        cached, so later checks need only the login. Returns
+        ``(owned workshop app ids, lookup still incomplete)``.
+        """
+        active = [lic for lic in licenses if lic.active]
+        cut_short = [lic.package_id for lic in active if not lic.complete]
+        cached = self.database.package_apps(cut_short)
+        app_ids: set[int] = set()
+        for lic in active:
+            app_ids |= set(cached.get(lic.package_id, lic.app_ids))
+
+        need_packages = [p for p in cut_short if p not in cached]
+        catalogue = self.database.app_catalog(list(app_ids))
+        need_apps = sorted(
+            a for a in app_ids if a not in catalogue or catalogue[a]["workshop"] is None
+        )
+        packages_now = need_packages[:MAX_PACKAGE_LOOKUPS]
+        apps_now = need_apps[:MAX_APP_LOOKUPS]
+        incomplete = len(packages_now) < len(need_packages) or len(apps_now) < len(need_apps)
+
+        if packages_now or apps_now:
+            found = self.steamcmd.inspect_library(self.credentials(account), packages_now, apps_now)
+            if found is None:
+                incomplete = True
+            else:
+                packages, apps = found
+                self.database.save_packages(packages)
+                for app_list in packages.values():
+                    if set(app_list) - app_ids:
+                        incomplete = True  # new apps to look up on the next check
+                    app_ids |= set(app_list)
+                info = {a: (i.name, i.workshop) for a, i in apps.items()}
+                # Apps Steam returned nothing for are remembered as "no Workshop".
+                info.update({a: (f"Steam app {a}", False) for a in apps_now if a not in apps})
+                self.database.save_app_info(info)
+                log.info(
+                    "Library scan for %s: %s packages, %s apps looked up",
+                    account["display_name"], len(packages), len(apps_now),
+                )
+
+        catalogue = self.database.app_catalog(list(app_ids))
+        owned = {a for a, row in catalogue.items() if row["workshop"] == 1}
+        return owned, incomplete
 
     def _workshop_games(self, library: dict[int, str]) -> set[int]:
         catalogue = self.database.app_catalog(list(library))

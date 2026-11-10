@@ -59,6 +59,22 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
+class License:
+    package_id: int
+    active: bool
+    app_ids: list[int]
+    # False when SteamCMD cut the app list short ("... (737 in total)").
+    complete: bool
+
+
+@dataclass
+class AppInfo:
+    name: str
+    app_type: str
+    workshop: bool
+
+
+@dataclass
 class AccountCheck:
     logged_in: bool
     owned_app_ids: list[int] = field(default_factory=list)
@@ -66,6 +82,7 @@ class AccountCheck:
     reason: str = ""
     transient: bool = False
     detail: str = ""
+    licenses: list[License] = field(default_factory=list)
 
 
 class SteamCmdError(RuntimeError):
@@ -89,20 +106,21 @@ class SteamCmd:
     # ----- public API ---------------------------------------------------
 
     def check_account(self, account: SteamAccount, app_ids: list[int]) -> AccountCheck:
-        """Log in and report which of ``app_ids`` the account owns.
+        """Log in, list the account's licences, and report which of
+        ``app_ids`` it owns.
 
         ``app_status`` reports ``Subscribed`` for owned apps and ``No License``
-        otherwise. ``licenses_print`` is not used because SteamCMD truncates
-        long package app lists.
+        otherwise. ``licenses_print`` lists every licence (package) with its
+        apps, but cuts long app lists short. ``inspect_library`` fills those in.
         """
-        commands: list[str] = []
+        commands: list[str] = ["+licenses_print"]
         for app_id in app_ids:
             commands += ["+app_status", str(app_id)]
         result = self._run(
             account,
             commands,
-            keep_lines=max(200, len(app_ids) * 8 + 100),
-            total_timeout=self.config.steamcmd_timeout_seconds + 60 + len(app_ids),
+            keep_lines=20000,
+            total_timeout=self.config.steamcmd_timeout_seconds + 90 + len(app_ids),
         )
         detail = "\n".join(result.lines[-12:])
         if not result.logged_in:
@@ -114,7 +132,36 @@ class SteamCmd:
             owned_app_ids=[a for a in parse_owned_apps(result.lines) if a in wanted],
             steam_id=parse_steam_id(result.lines),
             detail=detail,
+            licenses=parse_licenses(result.lines),
         )
+
+    def inspect_library(
+        self, account: SteamAccount, package_ids: list[int], app_ids: list[int]
+    ) -> tuple[dict[int, list[int]], dict[int, AppInfo]] | None:
+        """Full app lists for packages, and name/type/Workshop for apps.
+
+        Returns ``None`` when the login fails. Output is parsed while it
+        streams because ``app_info_print`` prints ~1000 lines per app.
+        """
+        commands: list[str] = []
+        for package_id in package_ids:
+            commands += ["+package_info_print", str(package_id)]
+        for app_id in app_ids:
+            commands += ["+app_info_print", str(app_id)]
+        parser = PicsParser()
+        result = self._run(
+            account,
+            commands,
+            on_line=parser.feed,
+            keep_lines=40,
+            total_timeout=(
+                self.config.steamcmd_timeout_seconds + 60
+                + len(package_ids) + 2 * len(app_ids)
+            ),
+        )
+        if not result.logged_in:
+            return None
+        return parser.packages, parser.apps
 
     def validate_account(self, account: SteamAccount) -> tuple[bool, str]:
         """Check SteamCMD credentials without downloading any content."""
@@ -266,7 +313,12 @@ class SteamCmd:
         try:
             assert process.stdout is not None
             for raw_line in process.stdout:
-                line = self._redact(strip_ansi(raw_line).strip(), account)
+                line = self._redact(
+                    strip_ansi(raw_line).strip(), account,
+                    # After login the username only shows up by accident,
+                    # e.g. inside a game name, so only the password is hidden.
+                    include_usernames=not logged_in.is_set(),
+                )
                 if not line:
                     continue
                 lines.append(line)
@@ -322,17 +374,21 @@ class SteamCmd:
                 log.info("Removing stale Steam Workshop cache file: %s", target)
                 target.unlink()
 
-    def _redact(self, value: str, account: SteamAccount | None = None) -> str:
-        secrets = [
-            secret
-            for item in self.config.steam_accounts
-            for secret in (item.username, item.password, item.guard_code)
-        ]
-        if account:
-            secrets.extend((account.username, account.password, account.guard_code))
-        for secret in secrets:
-            if secret:
-                value = value.replace(secret, "[redacted]")
+    def _redact(
+        self,
+        value: str,
+        account: SteamAccount | None = None,
+        include_usernames: bool = True,
+    ) -> str:
+        accounts = list(self.config.steam_accounts) + ([account] if account else [])
+        secrets: list[str] = []
+        for item in accounts:
+            secrets += [item.password, item.guard_code]
+            if include_usernames:
+                secrets.append(item.username)
+        # Longest first, so a password containing the username is fully hidden.
+        for secret in sorted(filter(None, secrets), key=len, reverse=True):
+            value = value.replace(secret, "[redacted]")
         return value
 
 
@@ -371,3 +427,105 @@ def parse_steam_id(lines: list[str]) -> str:
         if match and int(match.group(1)) > 0:
             return str(STEAM_ID64_BASE + int(match.group(1)))
     return ""
+
+
+LICENSE_RE = re.compile(r"^License packageID (\d+):")
+LICENSE_APPS_RE = re.compile(r"^- Apps\s*:\s*(.*)$")
+TOTAL_RE = re.compile(r"\((\d+) in total\)")
+PICS_HEADER_RE = re.compile(r"^(AppID|PackageID) : (\d+),")
+KV_RE = re.compile(r'^"([^"]*)"\s+"([^"]*)"$')
+KEY_RE = re.compile(r'^"([^"]*)"$')
+SKIPPED_APP_TYPES = {"dlc", "music", "video", "demo", "config", "beta", "series", "episode"}
+
+
+def parse_licenses(lines: list[str]) -> list[License]:
+    """Parse ``licenses_print``. Only ``Active`` licences count as owned."""
+    licenses: list[License] = []
+    current: License | None = None
+    for raw in lines:
+        line = strip_ansi(raw).strip()
+        match = LICENSE_RE.match(line)
+        if match:
+            current = License(int(match.group(1)), False, [], True)
+            licenses.append(current)
+            continue
+        if current is None:
+            continue
+        if line.startswith("- State"):
+            current.active = "Active" in line
+        apps = LICENSE_APPS_RE.match(line)
+        if apps:
+            text = apps.group(1)
+            listed = TOTAL_RE.sub("", text).replace("...", "")
+            current.app_ids = [int(v) for v in listed.split(",") if v.strip().isdigit()]
+            total = TOTAL_RE.search(text)
+            current.complete = "..." not in text and (
+                not total or int(total.group(1)) <= len(current.app_ids)
+            )
+    return licenses
+
+
+class PicsParser:
+    """Streaming parser for ``package_info_print`` / ``app_info_print``.
+
+    The output is Valve KeyValues. Lines arrive stripped, so nesting is
+    tracked with the ``{`` / ``}`` lines.
+    """
+
+    def __init__(self) -> None:
+        self.packages: dict[int, list[int]] = {}
+        self.apps: dict[int, AppInfo] = {}
+        self._kind = ""
+        self._id = 0
+        self._path: list[str] = []
+        self._pending_key = ""
+        self._app: dict[str, str] = {}
+
+    def feed(self, raw: str) -> None:
+        line = strip_ansi(raw).strip()
+        header = PICS_HEADER_RE.match(line)
+        if header:
+            self._finish()
+            self._kind, self._id = header.group(1), int(header.group(2))
+            self._path, self._pending_key, self._app = [], "", {}
+            if self._kind == "PackageID":
+                self.packages[self._id] = []
+            return
+        if not self._kind:
+            return
+        if line == "{":
+            self._path.append(self._pending_key)
+            self._pending_key = ""
+            return
+        if line == "}":
+            if self._path:
+                self._path.pop()
+            if not self._path:
+                self._finish()
+            return
+        kv = KV_RE.match(line)
+        if kv:
+            key, value = kv.groups()
+            # self._path[0] is the "<id>" root section.
+            section = self._path[1:]
+            if self._kind == "PackageID" and section == ["appids"] and value.isdigit():
+                self.packages[self._id].append(int(value))
+            elif self._kind == "AppID" and section == ["common"]:
+                self._app[key.lower()] = value
+            return
+        key = KEY_RE.match(line)
+        if key:
+            self._pending_key = key.group(1).lower()
+
+    def _finish(self) -> None:
+        if self._kind == "AppID" and self._app:
+            app_type = self._app.get("type", "").lower()
+            self.apps[self._id] = AppInfo(
+                name=(self._app.get("name") or f"Steam app {self._id}")[:200],
+                app_type=app_type,
+                workshop=(
+                    self._app.get("workshop_visible") == "1"
+                    and app_type not in SKIPPED_APP_TYPES
+                ),
+            )
+        self._kind, self._app = "", {}

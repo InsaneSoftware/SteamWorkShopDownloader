@@ -19,9 +19,8 @@ admin_token = "cs.rin.ru"
 credentials_key = ""
 
 [steam]
-# Optional Steam Web API key. With it, every account check also scans the
-# account's library and adds its Workshop-enabled games automatically.
-# Create one at https://steamcommunity.com/dev/apikey
+# Optional. Account libraries are read from the Steam login with SteamCMD.
+# The Web API key is only a fallback when that returns no licences.
 web_api_key = ""
 
 # Optional. Accounts listed here are imported once into the account pool

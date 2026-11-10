@@ -189,7 +189,7 @@ in screenshots and browser history.
 
 | Setting | Purpose |
 | --- | --- |
-| `web_api_key` | Optional Steam Web API key used to scan each account's owned games. Create it at `steamcommunity.com/dev/apikey`. |
+| `web_api_key` | Optional fallback for reading owned games. Not needed, the library is read from the login. |
 | `[[steam.accounts]]` | Optional. Each block is imported once into the account pool on startup. |
 | `name` | Public display name for the imported account. |
 | `username` / `password` | SteamCMD login for this account. |
@@ -203,14 +203,17 @@ database is in charge. Renaming, disabling or deleting an account in `/admin`
 is never undone by `config.toml`, even after a restart. After the accounts show
 up in `/admin`, remove their passwords from `config.toml`.
 
-With `web_api_key` set, every account check also reads the account's owned
-games through the Steam Web API. The Store API then tells which of them
-advertise **Steam Workshop**, and those titles are added to the game selector
-automatically. Store answers are cached, so each game is looked up once. The
-account's Steam **Game details** privacy setting must be **Public** for this
-(**Profile → Edit Profile → Privacy Settings**). Accounts with a private
-library still work for the configured `[[games]]`, and for Workshop games that
-were already found in other libraries.
+Every account check reads the account's library straight from its Steam login.
+SteamCMD lists the account's licences (`licenses_print`), fetches the full app
+list of each licence (`package_info_print`) and each game's details
+(`app_info_print`). Games that have a **Steam Workshop** are added to the game
+selector automatically. The Steam profile can stay private, and no Web API key
+is needed. Package and game details are cached, so after the first scan a check
+is just the login. A large new library is scanned in batches a few minutes
+apart. New purchases show up on the account's next check.
+
+`web_api_key` is optional and only used as a fallback when SteamCMD returns no
+licences.
 
 ## Community account pool
 
@@ -221,7 +224,7 @@ Users add accounts under **Share a Steam account** on the main page.
    optionally an emailed Steam Guard code. The site password is required.
 2. The account is stored encrypted with status **validating**. The worker logs
    in with SteamCMD between downloads, runs `app_status` for the known games,
-   and scans the library when a Web API key is set. The browser shows the
+   and reads the account's game library. The browser shows the
    result when the check finishes.
 3. An account that logs in and owns at least one supported game becomes
    **working**. A wrong password, a Steam Guard block, a disabled account or

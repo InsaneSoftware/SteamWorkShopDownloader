@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +83,14 @@ class Database:
                     name TEXT NOT NULL,
                     workshop INTEGER,
                     checked_at TEXT
+                );
+
+                -- Full app lists of Steam licences (packages), from
+                -- package_info_print. licenses_print cuts long lists short.
+                CREATE TABLE IF NOT EXISTS package_apps (
+                    package_id INTEGER PRIMARY KEY,
+                    app_ids TEXT NOT NULL,
+                    checked_at TEXT NOT NULL
                 );
 
                 -- config.toml logins already imported into the pool. They are
@@ -437,6 +445,57 @@ class Database:
             wanted = set(app_ids)
             result = {key: value for key, value in result.items() if key in wanted}
         return result
+
+    def save_app_info(self, apps: dict[int, tuple[str, bool]]) -> None:
+        """Store ``{app_id: (name, has_workshop)}`` from SteamCMD app info."""
+        if not apps:
+            return
+        now = utc_now()
+        with closing(self.connect()) as connection:
+            connection.executemany(
+                """
+                INSERT INTO app_catalog (app_id, name, workshop, checked_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(app_id) DO UPDATE SET
+                    name = excluded.name, workshop = excluded.workshop,
+                    checked_at = excluded.checked_at
+                """,
+                [(a, name, int(workshop), now) for a, (name, workshop) in apps.items()],
+            )
+            connection.commit()
+
+    def save_packages(self, packages: dict[int, list[int]]) -> None:
+        if not packages:
+            return
+        now = utc_now()
+        with closing(self.connect()) as connection:
+            connection.executemany(
+                """
+                INSERT INTO package_apps (package_id, app_ids, checked_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(package_id) DO UPDATE SET
+                    app_ids = excluded.app_ids, checked_at = excluded.checked_at
+                """,
+                [(p, json.dumps(sorted(set(apps))), now) for p, apps in packages.items()],
+            )
+            connection.commit()
+
+    def package_apps(self, package_ids: list[int], max_age_days: int = 30) -> dict[int, list[int]]:
+        """Cached app lists, ignoring entries older than ``max_age_days``
+        (bundles can gain apps)."""
+        if not package_ids:
+            return {}
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                "SELECT package_id, app_ids FROM package_apps WHERE checked_at >= ?",
+                (cutoff,),
+            ).fetchall()
+        wanted = set(package_ids)
+        return {
+            row["package_id"]: json.loads(row["app_ids"])
+            for row in rows if row["package_id"] in wanted
+        }
 
     def workshop_app_ids(self) -> list[int]:
         with closing(self.connect()) as connection:

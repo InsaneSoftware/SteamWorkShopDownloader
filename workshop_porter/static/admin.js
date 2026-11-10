@@ -91,8 +91,8 @@ function renderRow(account) {
   who.append(el("div", "account-name", account.display_name));
   who.append(el("div", "mono", account.username));
   if (account.steam_id) {
-    const library = account.library_visible === true ? "library public"
-      : account.library_visible === false ? "library private" : "library not scanned";
+    const library = account.library_visible === true ? "library read from login"
+      : account.library_visible === false ? "library not readable" : "library not scanned";
     who.append(el("div", "account-meta", `${account.steam_id} · ${library}`));
   }
   who.append(el("div", "account-meta", `added ${formatTime(account.created_at)}`));
