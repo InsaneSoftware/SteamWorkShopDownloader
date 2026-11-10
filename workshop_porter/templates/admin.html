@@ -4,67 +4,192 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Account Admin</title>
+  <title>Workshop Admin</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
   <header class="topbar">
-    <div class="container-shell">
+    <div class="container-shell admin-shell">
       <div>
-        <h1>Account admin <small>workshop downloader</small></h1>
-      </div>
-      <div class="topbar-right">
-        <a class="admin-link" href="/">Back to downloader</a>
+        <h1>Admin <small>workshop downloader</small></h1>
       </div>
     </div>
   </header>
 
+  <nav class="menubar" aria-label="Admin sections">
+    <div class="container-shell admin-shell menubar-inner">
+      <a class="menu-link" href="#accounts" data-view="accounts">
+        Accounts <span class="menu-count" id="accountsCount"></span>
+      </a>
+      <a class="menu-link" href="#activity" data-view="activity">Activity</a>
+      <a class="menu-link" href="#blocks" data-view="blocks">
+        Blocked IPs <span class="menu-count" id="blocksCount"></span>
+      </a>
+      <a class="menu-link menu-admin" href="/">Back to downloader</a>
+    </div>
+  </nav>
+
   <main class="container-shell admin-shell">
-    <div class="stat-row" id="stats">
-      <div class="stat"><span class="stat-value" id="statWorking">–</span><span class="stat-label">working</span></div>
-      <div class="stat"><span class="stat-value" id="statBroken">–</span><span class="stat-label">broken</span></div>
-      <div class="stat"><span class="stat-value" id="statPending">–</span><span class="stat-label">validating</span></div>
-      <div class="stat"><span class="stat-value" id="statDisabled">–</span><span class="stat-label">disabled</span></div>
-      <div class="stat"><span class="stat-value" id="statGames">–</span><span class="stat-label">games covered</span></div>
+    <div id="adminMessage" class="form-message admin-message top-message" role="status" aria-live="polite"></div>
+
+    <!-- Accounts ----------------------------------------------------- -->
+    <div class="view" data-view="accounts">
+      <div class="stat-row" id="stats">
+        <div class="stat"><span class="stat-value" id="statWorking">–</span><span class="stat-label">working</span></div>
+        <div class="stat"><span class="stat-value" id="statBroken">–</span><span class="stat-label">broken</span></div>
+        <div class="stat"><span class="stat-value" id="statPending">–</span><span class="stat-label">validating</span></div>
+        <div class="stat"><span class="stat-value" id="statDisabled">–</span><span class="stat-label">disabled</span></div>
+        <div class="stat"><span class="stat-value" id="statGames">–</span><span class="stat-label">games covered</span></div>
+      </div>
+
+      <section class="forum-panel" aria-labelledby="accounts-title">
+        <div class="panel-title">
+          <h2 id="accounts-title">Steam accounts</h2>
+          <div class="filter-tabs" role="tablist" id="filterTabs">
+            <button type="button" data-filter="all" class="active">All</button>
+            <button type="button" data-filter="working">Working</button>
+            <button type="button" data-filter="broken">Broken</button>
+            <button type="button" data-filter="pending">Validating</button>
+            <button type="button" data-filter="disabled">Disabled</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Name / login</th>
+                <th>Status</th>
+                <th>Games</th>
+                <th>Checks</th>
+                <th class="actions-col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="accountRows"></tbody>
+          </table>
+        </div>
+        <div id="adminEmpty" class="empty-state" hidden>No accounts match this filter.</div>
+      </section>
+
+      <section class="forum-panel" aria-labelledby="coverage-title">
+        <div class="panel-title">
+          <h2 id="coverage-title">Game coverage</h2>
+          <span id="intervalNote"></span>
+        </div>
+        <table class="pool-table"><tbody id="coverageRows"></tbody></table>
+      </section>
     </div>
 
-    <section class="forum-panel" aria-labelledby="accounts-title">
-      <div class="panel-title">
-        <h2 id="accounts-title">Steam accounts</h2>
-        <div class="filter-tabs" role="tablist" id="filterTabs">
-          <button type="button" data-filter="all" class="active">All</button>
-          <button type="button" data-filter="working">Working</button>
-          <button type="button" data-filter="broken">Broken</button>
-          <button type="button" data-filter="pending">Validating</button>
-          <button type="button" data-filter="disabled">Disabled</button>
-        </div>
+    <!-- Activity ----------------------------------------------------- -->
+    <div class="view" data-view="activity" hidden>
+      <div id="proxyWarning" class="token-hint" hidden>
+        Every visitor shows up as a local address. The site sits behind a proxy,
+        so set <code>trusted_proxy_hops = 1</code> under <code>[server]</code> in
+        config.toml and restart. Until then IPs are not real and cannot be blocked.
       </div>
-      <div class="table-scroll">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>Name / login</th>
-              <th>Status</th>
-              <th>Games</th>
-              <th>Checks</th>
-              <th class="actions-col">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="accountRows"></tbody>
-        </table>
-      </div>
-      <div id="adminEmpty" class="empty-state" hidden>No accounts match this filter.</div>
-      <div id="adminMessage" class="form-message admin-message" role="status" aria-live="polite"></div>
-    </section>
 
-    <section class="forum-panel" aria-labelledby="coverage-title">
-      <div class="panel-title">
-        <h2 id="coverage-title">Game coverage</h2>
-        <span id="intervalNote"></span>
-      </div>
-      <table class="pool-table"><tbody id="coverageRows"></tbody></table>
-    </section>
+      <section class="forum-panel" aria-labelledby="ips-title">
+        <div class="panel-title">
+          <h2 id="ips-title">Visitors by IP</h2>
+          <div class="filter-tabs" id="windowTabs">
+            <button type="button" data-hours="24" class="active">24 hours</button>
+            <button type="button" data-hours="168">7 days</button>
+            <button type="button" data-hours="720">30 days</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="admin-table ip-table">
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th class="num">Requests</th>
+                <th class="num">Rejected</th>
+                <th class="num">Downloads</th>
+                <th class="num">Data</th>
+                <th class="num">Shared</th>
+                <th class="num">Wrong password</th>
+                <th>Last seen</th>
+                <th class="actions-col"></th>
+              </tr>
+            </thead>
+            <tbody id="ipRows"></tbody>
+          </table>
+        </div>
+        <div id="ipEmpty" class="empty-state" hidden>No activity in this period.</div>
+      </section>
+
+      <section class="forum-panel" aria-labelledby="log-title">
+        <div class="panel-title">
+          <h2 id="log-title">Activity log</h2>
+          <div class="log-filter">
+            <input class="form-control form-control-sm" id="ipFilter" type="search" placeholder="Filter by IP" aria-label="Filter by IP">
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="admin-table log-table">
+            <thead>
+              <tr><th>Time</th><th>IP</th><th>Action</th><th>Result</th><th>Details</th></tr>
+            </thead>
+            <tbody id="logRows"></tbody>
+          </table>
+        </div>
+        <div id="logEmpty" class="empty-state" hidden>Nothing logged.</div>
+      </section>
+    </div>
+
+    <!-- Blocks ------------------------------------------------------- -->
+    <div class="view" data-view="blocks" hidden>
+      <section class="forum-panel" aria-labelledby="block-title">
+        <div class="panel-title">
+          <h2 id="block-title">Block an IP</h2>
+          <span>your IP: <span id="yourIp">–</span></span>
+        </div>
+        <form id="blockForm" class="panel-body">
+          <div class="form-row">
+            <label for="blockTarget">IP or range</label>
+            <input class="form-control form-control-sm" id="blockTarget" placeholder="203.0.113.7 or 203.0.113.0/24" required>
+          </div>
+          <div class="form-row">
+            <label for="blockHours">Duration</label>
+            <div class="duration-row">
+              <select class="form-select form-select-sm" id="blockHours">
+                <option value="1">1 hour</option>
+                <option value="6">6 hours</option>
+                <option value="24" selected>24 hours</option>
+                <option value="168">7 days</option>
+                <option value="720">30 days</option>
+                <option value="custom">Custom hours…</option>
+                <option value="0">Permanent</option>
+              </select>
+              <input class="form-control form-control-sm" id="blockCustom" type="number" min="1" max="87600" placeholder="hours" hidden>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="blockReason">Reason</label>
+            <input class="form-control form-control-sm" id="blockReason" maxlength="200" placeholder="Optional, only you see this">
+          </div>
+          <div class="form-actions">
+            <button class="submit-button btn btn-sm" type="submit">Block</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="forum-panel" aria-labelledby="blocks-title">
+        <div class="panel-title">
+          <h2 id="blocks-title">Active blocks</h2>
+          <span>you are never blocked while logged in as admin</span>
+        </div>
+        <div class="table-scroll">
+          <table class="admin-table">
+            <thead>
+              <tr><th>IP or range</th><th>Until</th><th>Reason</th><th>Added</th><th class="actions-col"></th></tr>
+            </thead>
+            <tbody id="blockRows"></tbody>
+          </table>
+        </div>
+        <div id="blockEmpty" class="empty-state" hidden>No IPs are blocked.</div>
+      </section>
+    </div>
   </main>
 
   <script src="{{ url_for('static', filename='admin.js') }}" defer></script>

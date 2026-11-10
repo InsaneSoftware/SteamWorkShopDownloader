@@ -5,9 +5,10 @@ import hashlib
 import re
 import secrets
 import threading
+import time
+from datetime import datetime, timedelta, timezone
 import uuid
 from collections.abc import Callable
-from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.parse import quote as url_quote
@@ -22,6 +23,7 @@ from .database import (
     ActiveJobError, Database, DuplicateAccountError, QueueFullError, utc_now,
 )
 from .metadata import fetch_workshop_details
+from .security import IpGuard, expiry_from_hours, normalize_ip, parse_block_target
 from .steamcmd import SteamCmd
 from .vault import CredentialVault
 from .worker import QueueWorker
@@ -111,12 +113,54 @@ def create_app(
     app.extensions["workshop_worker"] = worker
     download_limiter = DownloadLimiter(config.max_downloads_per_ip)
     app.extensions["workshop_download_limiter"] = download_limiter
+    ip_guard = IpGuard(database)
+    app.extensions["workshop_ip_guard"] = ip_guard
+    ip_guard.prune()
+    next_prune = [time.monotonic() + 6 * 3600]
+
+    def client_ip() -> str:
+        # request.remote_addr is already the real visitor when
+        # [server].trusted_proxy_hops is set (ProxyFix above).
+        return normalize_ip(request.remote_addr)
+
+    def log_activity(action: str, status: str, detail: str = "", bytes_: int | None = None):
+        try:
+            database.log_activity(client_ip(), action, status, detail, bytes_)
+        except Exception:
+            app.logger.exception("Could not write the activity log")
+
+    @app.before_request
+    def enforce_ip_blocks():
+        if time.monotonic() > next_prune[0]:
+            next_prune[0] = time.monotonic() + 6 * 3600
+            ip_guard.prune()
+        ip = client_ip()
+        block = ip_guard.block_for(ip)
+        if not block or has_admin_access():
+            return None
+        # Let the admin log in from a blocked address, and keep the page styled.
+        if request.path.startswith("/static/") or (
+            request.path == "/" and "admin" in request.args
+        ):
+            return None
+        if ip_guard.should_log(ip, "blocked", 300):
+            log_activity("blocked", "denied", f"{request.method} {request.path}"[:120])
+        until = (
+            "permanently" if block["expires_at"] is None
+            else "until " + block["expires_at"][:16].replace("T", " ") + " UTC"
+        )
+        message = f"Your IP address is blocked {until}."
+        if request.path.startswith("/api/") or request.path.startswith("/download/"):
+            return jsonify(error=message), 403
+        return app.response_class(message, status=403, mimetype="text/plain")
     if start_worker:
         worker.start()
 
     def require_admin():
         supplied = request.headers.get("Authorization", "")
         if not hmac.compare_digest(supplied, f"Bearer {config.admin_token}"):
+            if ip_guard.should_log(client_ip(), "bad_password", 60):
+                log_activity("bad_password", "denied", f"{request.method} {request.path}")
             return jsonify(error="A valid admin token is required"), 401
         return None
 
@@ -218,6 +262,8 @@ def create_app(
             if not config.admin_password or not hmac.compare_digest(
                 secret, config.admin_password
             ):
+                if ip_guard.should_log(client_ip(), "admin_login_failed", 10):
+                    log_activity("admin_login_failed", "denied")
                 return "No", 403
             response = redirect(url_for("index"))
             response.set_cookie(
@@ -305,6 +351,10 @@ def create_app(
                 "expires_at": None,
             }
             stored, created = database.create_job(job, config.max_queue_size)
+            log_activity(
+                "request", "queued" if created else "duplicate",
+                f"{job['game_name']} · {job['item_name'] or workshop_id} ({workshop_id})",
+            )
             return (
                 jsonify(
                     job=serialize_job(
@@ -317,8 +367,10 @@ def create_app(
                 201 if created else 200,
             )
         except (TypeError, ValueError) as exc:
+            log_activity("request", "rejected", f"{exc} · {payload.get('url', '')}"[:300])
             return jsonify(error=str(exc)), 400
         except QueueFullError as exc:
+            log_activity("request", "queue_full", str(payload.get("url", ""))[:300])
             return jsonify(error=str(exc)), 429
 
     @app.get("/api/jobs/<job_id>")
@@ -359,7 +411,14 @@ def create_app(
         job = database.get_job(job_id)
         supplied = request.args.get("token", "")
         if not job or not hmac.compare_digest(supplied, job.get("download_token", "")):
+            if ip_guard.should_log(client_ip(), "download_not_found", 30):
+                log_activity("download", "not_found", job_id[:40])
             return jsonify(error="Download not found"), 404
+        label = f"{job['game_name']} · {job.get('item_name') or job['workshop_id']}"
+        # Resumed transfers send several ranged requests. Count the first one.
+        first_part = request.range is None or (
+            request.range.ranges and request.range.ranges[0][0] == 0
+        )
         if job["status"] != "ready" or not job["archive_name"]:
             return jsonify(error="This download is not available"), 410
         if Path(job["archive_name"]).name != job["archive_name"]:
@@ -367,6 +426,8 @@ def create_app(
         archive = config.archive_dir / job["archive_name"]
         if not archive.is_file():
             return jsonify(error="Archive no longer exists"), 410
+        if first_part:
+            log_activity("download", "ok", label, job.get("archive_bytes"))
 
         if config.x_accel_redirect_prefix:
             response = app.response_class(status=200, mimetype="application/zip")
@@ -378,13 +439,11 @@ def create_app(
                 "attachment", {"filename": job["archive_name"]}
             )
         else:
-            raw_client_ip = request.remote_addr or "unknown"
-            try:
-                client_ip = str(ip_address(raw_client_ip))
-            except ValueError:
-                client_ip = raw_client_ip
-            release_download = download_limiter.acquire(client_ip)
+            visitor_ip = client_ip()
+            release_download = download_limiter.acquire(visitor_ip)
             if release_download is None:
+                if ip_guard.should_log(visitor_ip, "download_busy", 30):
+                    log_activity("download", "busy", label)
                 response = jsonify(
                     error=(
                         "This IP address already has the maximum number of active "
@@ -465,15 +524,19 @@ def create_app(
                 str(payload.get("guard_code", "")),
             )
         except ValueError as exc:
+            log_activity("share", "rejected", f"{payload.get('display_name', '')} · {exc}"[:300])
             return jsonify(error=str(exc)), 400
         except DuplicateAccountError as exc:
+            log_activity("share", "duplicate", str(payload.get("display_name", ""))[:60])
             state = (
                 "is waiting for validation" if str(exc) == "pending"
                 else "is already in the pool"
             )
             return jsonify(error=f"This Steam account {state}."), 409
         except QueueFullError as exc:
+            log_activity("share", "queue_full", str(payload.get("display_name", ""))[:60])
             return jsonify(error=str(exc)), 429
+        log_activity("share", "submitted", account["display_name"])
         return jsonify(
             account=serialize_account(account, pool.known_games()), created=created
         ), 201
@@ -548,6 +611,74 @@ def create_app(
         if not database.delete_account(account_id):
             return jsonify(error="Account not found"), 404
         return jsonify(deleted=True)
+
+    # ----- Admin: activity and IP blocks --------------------------------
+
+    def serialize_block(block: dict) -> dict:
+        return {
+            "network": block["network"],
+            "reason": block["reason"],
+            "created_at": block["created_at"],
+            "expires_at": block["expires_at"],
+        }
+
+    @app.get("/api/admin/activity")
+    def admin_activity():
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        try:
+            hours = min(max(int(request.args.get("hours", 24)), 1), 24 * 90)
+        except ValueError:
+            hours = 24
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        ip_filter = request.args.get("ip", "").strip() or None
+        ips = database.activity_by_ip(since)
+        for row in ips:
+            block = ip_guard.block_for(row["ip"])
+            row["blocked"] = serialize_block(block) if block else None
+        return jsonify(
+            hours=hours,
+            ips=ips,
+            events=database.recent_activity(since, ip_filter),
+            your_ip=client_ip(),
+            proxy_configured=bool(config.trusted_proxy_hops),
+        )
+
+    @app.get("/api/admin/blocks")
+    def admin_blocks():
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        return jsonify(blocks=[serialize_block(b) for b in database.active_blocks()])
+
+    @app.post("/api/admin/blocks")
+    def admin_add_block():
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        payload = request.get_json(silent=True) or {}
+        try:
+            network = parse_block_target(str(payload.get("target", "")))
+            hours = payload.get("hours")
+            expires_at = expiry_from_hours(float(hours) if hours else None)
+        except (TypeError, ValueError) as exc:
+            return jsonify(error=str(exc)), 400
+        database.add_block(network, str(payload.get("reason", "")).strip(), expires_at)
+        ip_guard.invalidate()
+        app.logger.info("Admin blocked %s until %s", network, expires_at or "forever")
+        return jsonify(ok=True, network=network, expires_at=expires_at)
+
+    @app.post("/api/admin/blocks/remove")
+    def admin_remove_block():
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        network = str((request.get_json(silent=True) or {}).get("network", ""))
+        if not database.remove_block(network):
+            return jsonify(error="Block not found"), 404
+        ip_guard.invalidate()
+        return jsonify(ok=True)
 
     @app.errorhandler(413)
     def too_large(_error):

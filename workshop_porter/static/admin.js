@@ -61,6 +61,8 @@ function renderStats(data) {
   document.querySelector("#statDisabled").textContent = count("disabled");
   const covered = data.games.filter((g) => g.accounts > 0).length;
   document.querySelector("#statGames").textContent = `${covered}/${data.games.length}`;
+  document.querySelector("#accountsCount").textContent =
+    `${count("working")}/${data.accounts.length}`;
 }
 
 function renderCoverage(games) {
@@ -169,7 +171,7 @@ async function act(path, options, success) {
 
 function showMessage(text, style) {
   message.textContent = text;
-  message.className = `form-message admin-message ${style}`;
+  message.className = `form-message admin-message top-message ${style}`;
 }
 
 function formatTime(value) {
@@ -182,5 +184,289 @@ function formatTime(value) {
   return formatter.format(seconds, "second");
 }
 
-load();
-window.setInterval(load, 10000);
+// ----- Views (menu bar) ------------------------------------------------
+
+const VIEWS = ["accounts", "activity", "blocks"];
+
+function currentView() {
+  const requested = window.location.hash.slice(1);
+  return VIEWS.includes(requested) ? requested : "accounts";
+}
+
+function showView() {
+  const view = currentView();
+  document.querySelectorAll(".view").forEach((section) => {
+    section.hidden = section.dataset.view !== view;
+  });
+  document.querySelectorAll(".menu-link[data-view]").forEach((link) => {
+    link.classList.toggle("active", link.dataset.view === view);
+  });
+  refreshCurrent();
+}
+
+function refreshCurrent() {
+  const view = currentView();
+  if (view === "activity") loadActivity();
+  if (view === "blocks") loadBlocks();
+  if (view === "accounts") load();
+}
+
+window.addEventListener("hashchange", showView);
+
+// ----- Activity --------------------------------------------------------
+
+let activityHours = 24;
+let ipFilter = "";
+const ACTION_LABELS = {
+  request: "Requested item",
+  download: "Downloaded",
+  share: "Shared account",
+  bad_password: "Wrong site password",
+  admin_login_failed: "Failed admin login",
+  blocked: "Blocked visit",
+};
+
+document.querySelectorAll("#windowTabs button").forEach((button) => {
+  button.addEventListener("click", () => {
+    activityHours = Number(button.dataset.hours);
+    document.querySelectorAll("#windowTabs button").forEach((b) =>
+      b.classList.toggle("active", b === button));
+    loadActivity();
+  });
+});
+
+let filterTimer = null;
+document.querySelector("#ipFilter").addEventListener("input", (event) => {
+  window.clearTimeout(filterTimer);
+  filterTimer = window.setTimeout(() => {
+    ipFilter = event.target.value.trim();
+    loadActivity();
+  }, 300);
+});
+
+async function loadActivity() {
+  try {
+    const query = new URLSearchParams({ hours: activityHours });
+    if (ipFilter) query.set("ip", ipFilter);
+    const data = await api(`/api/admin/activity?${query}`);
+    document.querySelector("#yourIp").textContent = data.your_ip;
+    const ips = data.ips.map((row) => row.ip);
+    document.querySelector("#proxyWarning").hidden =
+      !(ips.length > 0 && ips.every(isLocalIp));
+    renderIpRows(data.ips);
+    renderLog(data.events);
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
+function isLocalIp(ip) {
+  return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fc|fd|fe80)/i.test(ip);
+}
+
+function ipButton(ip, title, onClick) {
+  const button = el("button", "link-button mono", ip);
+  button.type = "button";
+  button.title = title;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderIpRows(ips) {
+  const body = document.querySelector("#ipRows");
+  body.replaceChildren();
+  document.querySelector("#ipEmpty").hidden = ips.length > 0;
+  ips.forEach((row) => {
+    const tr = el("tr", row.blocked ? "status-disabled" : "");
+    const ipCell = el("td");
+    ipCell.append(ipButton(row.ip, "Show only this IP in the log", () => setIpFilter(row.ip)));
+    if (row.blocked) {
+      ipCell.append(el("div", "reason", `blocked ${untilText(row.blocked.expires_at)}`));
+    }
+    tr.append(ipCell);
+    tr.append(el("td", "num", row.requests || "–"));
+    tr.append(el("td", row.rejected ? "num warn" : "num", row.rejected || "–"));
+    tr.append(el("td", "num strong", row.downloads || "–"));
+    tr.append(el("td", "num", row.bytes ? formatBytes(row.bytes) : "–"));
+    tr.append(el("td", "num", row.shares || "–"));
+    tr.append(el("td", row.bad_passwords ? "num warn" : "num", row.bad_passwords || "–"));
+    tr.append(el("td", "checks-cell", formatTime(row.last_seen)));
+    const actions = el("td", "actions-col");
+    if (isLocalIp(row.ip)) {
+      actions.append(el("span", "account-meta", "local"));
+    } else if (row.blocked) {
+      const unblock = el("button", "btn btn-sm btn-outline-secondary", "Unblock");
+      unblock.addEventListener("click", () => removeBlock(row.blocked.network));
+      actions.append(unblock);
+    } else {
+      const block = el("button", "btn btn-sm btn-outline-danger", "Block");
+      block.addEventListener("click", () => openBlockForm(row.ip));
+      actions.append(block);
+    }
+    tr.append(actions);
+    body.append(tr);
+  });
+}
+
+function renderLog(events) {
+  const body = document.querySelector("#logRows");
+  body.replaceChildren();
+  document.querySelector("#logEmpty").hidden = events.length > 0;
+  events.forEach((event) => {
+    const tr = el("tr", `log-${event.status}`);
+    tr.append(el("td", "checks-cell", formatClock(event.at)));
+    const ipCell = el("td");
+    ipCell.append(ipButton(event.ip, "Show only this IP", () => setIpFilter(event.ip)));
+    tr.append(ipCell);
+    tr.append(el("td", "", ACTION_LABELS[event.action] || event.action));
+    tr.append(el("td", "log-status", event.status.replace("_", " ")));
+    const detail = event.bytes ? `${event.detail} · ${formatBytes(event.bytes)}` : event.detail;
+    tr.append(el("td", "log-detail", detail));
+    body.append(tr);
+  });
+}
+
+function setIpFilter(ip) {
+  const input = document.querySelector("#ipFilter");
+  input.value = ip;
+  ipFilter = ip;
+  loadActivity();
+  input.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+// ----- Blocks ----------------------------------------------------------
+
+const blockHours = document.querySelector("#blockHours");
+const blockCustom = document.querySelector("#blockCustom");
+blockHours.addEventListener("change", () => {
+  blockCustom.hidden = blockHours.value !== "custom";
+  if (!blockCustom.hidden) blockCustom.focus();
+});
+
+function openBlockForm(ip) {
+  window.location.hash = "#blocks";
+  document.querySelector("#blockTarget").value = ip;
+  document.querySelector("#blockReason").focus();
+}
+
+document.querySelector("#blockForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const target = document.querySelector("#blockTarget").value.trim();
+  const custom = blockHours.value === "custom";
+  const hours = custom ? Number(blockCustom.value) : Number(blockHours.value);
+  if (custom && !(hours >= 1)) {
+    showMessage("Enter the number of hours.", "error");
+    return;
+  }
+  const label = hours ? `for ${durationText(hours)}` : "permanently";
+  if (!window.confirm(`Block ${target} ${label}?`)) return;
+  try {
+    await api("/api/admin/blocks", {
+      method: "POST",
+      body: JSON.stringify({
+        target,
+        hours: hours || null,
+        reason: document.querySelector("#blockReason").value,
+      }),
+    });
+    showMessage(`${target} is blocked ${label}.`, "success");
+    event.target.reset();
+    blockCustom.hidden = true;
+    loadBlocks();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+});
+
+async function loadBlocks() {
+  try {
+    const [blocks, activity] = await Promise.all([
+      api("/api/admin/blocks"),
+      api("/api/admin/activity?hours=1"),
+    ]);
+    document.querySelector("#yourIp").textContent = activity.your_ip;
+    renderBlocks(blocks.blocks);
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
+function renderBlocks(blocks) {
+  document.querySelector("#blocksCount").textContent = blocks.length || "";
+  const body = document.querySelector("#blockRows");
+  body.replaceChildren();
+  document.querySelector("#blockEmpty").hidden = blocks.length > 0;
+  blocks.forEach((block) => {
+    const tr = el("tr");
+    const ipCell = el("td");
+    ipCell.append(ipButton(block.network, "Show this IP's activity", () => {
+      window.location.hash = "#activity";
+      setIpFilter(block.network.split("/")[0]);
+    }));
+    tr.append(ipCell);
+    tr.append(el("td", "", block.expires_at ? untilText(block.expires_at) : "permanent"));
+    tr.append(el("td", "", block.reason || "–"));
+    tr.append(el("td", "checks-cell", formatTime(block.created_at)));
+    const actions = el("td", "actions-col");
+    const unblock = el("button", "btn btn-sm btn-outline-secondary", "Unblock");
+    unblock.addEventListener("click", () => removeBlock(block.network));
+    actions.append(unblock);
+    tr.append(actions);
+    body.append(tr);
+  });
+}
+
+async function removeBlock(network) {
+  if (!window.confirm(`Unblock ${network}?`)) return;
+  try {
+    await api("/api/admin/blocks/remove", {
+      method: "POST",
+      body: JSON.stringify({ network }),
+    });
+    showMessage(`${network} is unblocked.`, "success");
+    refreshCurrent();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
+// ----- Formatting ------------------------------------------------------
+
+function formatBytes(bytes) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(unit ? 1 : 0)} ${units[unit]}`;
+}
+
+function formatClock(value) {
+  const date = new Date(value);
+  const sameDay = date.toDateString() === new Date().toDateString();
+  return sameDay
+    ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function untilText(expiresAt) {
+  if (!expiresAt) return "permanently";
+  return `until ${new Date(expiresAt).toLocaleString([], {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  })}`;
+}
+
+function durationText(hours) {
+  if (hours % 24 === 0) return `${hours / 24} day${hours === 24 ? "" : "s"}`;
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+// The blocks count in the menu, on every tab.
+api("/api/admin/blocks").then((data) => {
+  document.querySelector("#blocksCount").textContent = data.blocks.length || "";
+}).catch(() => {});
+
+showView();
+window.setInterval(refreshCurrent, 15000);

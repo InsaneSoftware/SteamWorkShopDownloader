@@ -445,3 +445,37 @@ option:disabled { color: #6b7179; }
 .guard-note { margin-top: -4px; }
 .guard-busy { color: #d9bc82; }
 .guard-busy[hidden] { display: none; }
+
+/* ----- Admin: activity and blocks ------------------------------------ */
+
+.admin-shell .menu-admin { margin-left: auto; }
+.top-message { min-height: 0; margin: 10px 0 0; padding: 0; }
+.top-message:empty { display: none; }
+.link-button {
+  padding: 0;
+  border: 0;
+  color: var(--link);
+  background: none;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.link-button:hover { text-decoration: underline; }
+.admin-table th.num, .admin-table td.num { text-align: right; white-space: nowrap; }
+.admin-table td.strong { color: #fff; font-weight: 700; }
+.admin-table td.warn { color: #e0a060; font-weight: 700; }
+.ip-table td, .log-table td { vertical-align: middle; }
+.log-table td { padding-top: 6px; padding-bottom: 6px; }
+.log-detail { color: #c3c8ce; overflow-wrap: anywhere; }
+.log-table tr.log-rejected .log-status,
+.log-table tr.log-denied .log-status,
+.log-table tr.log-not_found .log-status,
+.log-table tr.log-queue_full .log-status { color: #e08a8a; }
+.log-table tr.log-ok .log-status,
+.log-table tr.log-queued .log-status,
+.log-table tr.log-submitted .log-status { color: var(--success); }
+.log-filter { width: 220px; }
+.log-filter .form-control { height: 24px; font-size: 11px; }
+.duration-row { display: flex; gap: 8px; }
+.duration-row .form-control { max-width: 110px; }
+.token-hint code { color: #f0d9a8; }

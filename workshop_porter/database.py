@@ -93,6 +93,27 @@ class Database:
                     checked_at TEXT NOT NULL
                 );
 
+                -- Who did what, by client IP. Kept for 90 days.
+                CREATE TABLE IF NOT EXISTS activity_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    at TEXT NOT NULL,
+                    ip TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    detail TEXT NOT NULL DEFAULT '',
+                    bytes INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS idx_activity_at ON activity_log(at);
+                CREATE INDEX IF NOT EXISTS idx_activity_ip ON activity_log(ip, at);
+
+                -- Blocked IPs or ranges (CIDR). expires_at NULL means permanent.
+                CREATE TABLE IF NOT EXISTS ip_blocks (
+                    network TEXT PRIMARY KEY,
+                    reason TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT
+                );
+
                 -- config.toml logins already imported into the pool. They are
                 -- never imported again, so renames and deletions in the admin
                 -- dashboard survive restarts.
@@ -504,6 +525,104 @@ class Database:
                     "SELECT app_id FROM app_catalog WHERE workshop = 1"
                 ).fetchall()
             ]
+
+
+    # ----- Activity log and IP blocks -----------------------------------
+
+    def log_activity(
+        self, ip: str, action: str, status: str, detail: str = "", bytes_: int | None = None
+    ) -> None:
+        with closing(self.connect()) as connection:
+            connection.execute(
+                """
+                INSERT INTO activity_log (at, ip, action, status, detail, bytes)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (utc_now(), ip, action, status, detail[:300], bytes_),
+            )
+            connection.commit()
+
+    def recent_activity(
+        self, since: str, ip: str | None = None, limit: int = 300
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM activity_log WHERE at >= ?"
+        params: list[Any] = [since]
+        if ip:
+            query += " AND ip = ?"
+            params.append(ip)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        with closing(self.connect()) as connection:
+            return [dict(row) for row in connection.execute(query, params).fetchall()]
+
+    def activity_by_ip(self, since: str, limit: int = 100) -> list[dict[str, Any]]:
+        """Per-IP totals, busiest first."""
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT ip,
+                    COUNT(*) AS events,
+                    SUM(action = 'request' AND status = 'queued') AS requests,
+                    SUM(action = 'request' AND status != 'queued') AS rejected,
+                    SUM(action = 'download' AND status = 'ok') AS downloads,
+                    COALESCE(SUM(CASE WHEN action = 'download' AND status = 'ok'
+                                      THEN bytes END), 0) AS bytes,
+                    SUM(action = 'share') AS shares,
+                    SUM(action IN ('bad_password', 'admin_login_failed')) AS bad_passwords,
+                    SUM(action = 'blocked') AS blocked_hits,
+                    MAX(at) AS last_seen
+                FROM activity_log
+                WHERE at >= ?
+                GROUP BY ip
+                ORDER BY downloads + requests DESC, events DESC
+                LIMIT ?
+                """,
+                (since, limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def prune_activity(self, before: str) -> None:
+        with closing(self.connect()) as connection:
+            connection.execute("DELETE FROM activity_log WHERE at < ?", (before,))
+            connection.execute(
+                "DELETE FROM ip_blocks WHERE expires_at IS NOT NULL AND expires_at < ?",
+                (utc_now(),),
+            )
+            connection.commit()
+
+    def add_block(self, network: str, reason: str, expires_at: str | None) -> None:
+        with closing(self.connect()) as connection:
+            connection.execute(
+                """
+                INSERT INTO ip_blocks (network, reason, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(network) DO UPDATE SET
+                    reason = excluded.reason, created_at = excluded.created_at,
+                    expires_at = excluded.expires_at
+                """,
+                (network, reason[:200], utc_now(), expires_at),
+            )
+            connection.commit()
+
+    def remove_block(self, network: str) -> bool:
+        with closing(self.connect()) as connection:
+            cursor = connection.execute(
+                "DELETE FROM ip_blocks WHERE network = ?", (network,)
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def active_blocks(self) -> list[dict[str, Any]]:
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM ip_blocks
+                WHERE expires_at IS NULL OR expires_at > ?
+                ORDER BY created_at DESC
+                """,
+                (utc_now(),),
+            ).fetchall()
+            return [dict(row) for row in rows]
 
 
 class DuplicateAccountError(RuntimeError):

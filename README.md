@@ -256,6 +256,33 @@ owned games, and its last, next and most recent use times. It also shows how
 many working accounts cover each game. Accounts can be re-checked immediately,
 disabled, enabled again or deleted.
 
+### Activity log and IP blocks
+
+The **Activity** tab in `/admin` lists every visitor IP for the last 24 hours,
+7 days or 30 days. For each IP it shows requested items, rejected requests,
+downloads, data downloaded, shared accounts and wrong site passwords. The log
+below it shows each event and can be filtered by IP (click an IP to filter).
+Entries are kept for 90 days.
+
+Repeated wrong-password and blocked hits from the same IP are logged at most
+once a minute (blocked hits once every 5 minutes), so a stale password in a
+polling browser does not flood the log. A resumed download is counted once.
+
+The **Blocked IPs** tab blocks an IP or a range such as `203.0.113.0/24`, for
+1 hour up to permanently, with an optional reason. Blocked visitors get a
+`403` with the time the block ends. An admin is never blocked while logged in.
+Local and private addresses cannot be blocked.
+
+The IPs are only real when the app knows it sits behind a proxy. Behind
+CloudPanel, Nginx or another reverse proxy, set this, or every visitor shows up
+as `127.0.0.1` (the Activity tab warns about it):
+
+```toml
+[server]
+host = "127.0.0.1"
+trusted_proxy_hops = 1
+```
+
 ### Credential encryption
 
 Logins and passwords are encrypted with a key from
