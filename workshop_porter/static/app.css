@@ -479,3 +479,15 @@ option:disabled { color: #6b7179; }
 .duration-row { display: flex; gap: 8px; }
 .duration-row .form-control { max-width: 110px; }
 .token-hint code { color: #f0d9a8; }
+
+.hidden-tag {
+  margin-left: 8px;
+  padding: 1px 5px;
+  border: 1px solid #505760;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.pool-table tr.game-hidden .game-link { color: #777e87; text-decoration: line-through; }
+.pool-table td.actions-col { width: 1%; padding-left: 0; }
+.pool-table .actions-col .btn { padding: 0 8px; font-size: 10px; }

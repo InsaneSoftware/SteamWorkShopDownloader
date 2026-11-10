@@ -93,6 +93,13 @@ class Database:
                     checked_at TEXT NOT NULL
                 );
 
+                -- Admin choices to hide or show a game in the public list.
+                CREATE TABLE IF NOT EXISTS game_visibility (
+                    app_id INTEGER PRIMARY KEY,
+                    hidden INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 -- Who did what, by client IP. Kept for 90 days.
                 CREATE TABLE IF NOT EXISTS activity_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -526,6 +533,26 @@ class Database:
                 ).fetchall()
             ]
 
+
+    # ----- Game visibility ----------------------------------------------
+
+    def game_visibility(self) -> dict[int, bool]:
+        """``{app_id: hidden}`` for games the admin hid or showed explicitly."""
+        with closing(self.connect()) as connection:
+            rows = connection.execute("SELECT app_id, hidden FROM game_visibility").fetchall()
+        return {row["app_id"]: bool(row["hidden"]) for row in rows}
+
+    def set_game_visibility(self, app_id: int, hidden: bool) -> None:
+        with closing(self.connect()) as connection:
+            connection.execute(
+                """
+                INSERT INTO game_visibility (app_id, hidden, updated_at) VALUES (?, ?, ?)
+                ON CONFLICT(app_id) DO UPDATE SET
+                    hidden = excluded.hidden, updated_at = excluded.updated_at
+                """,
+                (app_id, int(hidden), utc_now()),
+            )
+            connection.commit()
 
     # ----- Activity log and IP blocks -----------------------------------
 

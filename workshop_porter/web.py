@@ -554,15 +554,26 @@ def create_app(
         auth_error = require_admin_session()
         if auth_error:
             return auth_error
-        names = pool.known_games()
+        names = pool.known_games(include_hidden=True)
         return jsonify(
             accounts=[
                 serialize_admin_account(a, names) for a in database.list_accounts()
             ],
-            games=pool.supported_games(),
+            games=pool.supported_games(include_hidden=True),
             check_interval_minutes=config.account_check_minutes,
             web_api_key=bool(config.steam_web_api_key),
         )
+
+    @app.post("/api/admin/games/<int:app_id>/hidden")
+    def admin_set_game_hidden(app_id: int):
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        if app_id not in pool.known_games(include_hidden=True):
+            return jsonify(error="Game not found"), 404
+        hidden = bool((request.get_json(silent=True) or {}).get("hidden"))
+        pool.set_game_hidden(app_id, hidden)
+        return jsonify(ok=True, hidden=hidden)
 
     @app.post("/api/admin/accounts/<account_id>/recheck")
     def admin_recheck(account_id: str):

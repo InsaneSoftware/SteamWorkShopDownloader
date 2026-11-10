@@ -59,8 +59,9 @@ function renderStats(data) {
   document.querySelector("#statBroken").textContent = count("broken");
   document.querySelector("#statPending").textContent = count("pending");
   document.querySelector("#statDisabled").textContent = count("disabled");
-  const covered = data.games.filter((g) => g.accounts > 0).length;
-  document.querySelector("#statGames").textContent = `${covered}/${data.games.length}`;
+  const shown = data.games.filter((g) => !g.hidden);
+  const covered = shown.filter((g) => g.accounts > 0).length;
+  document.querySelector("#statGames").textContent = `${covered}/${shown.length}`;
   document.querySelector("#accountsCount").textContent =
     `${count("working")}/${data.accounts.length}`;
 }
@@ -72,9 +73,29 @@ function renderCoverage(games) {
     .slice()
     .sort((a, b) => a.accounts - b.accounts || a.name.localeCompare(b.name))
     .forEach((game) => {
-      const row = el("tr", game.accounts ? "" : "unsupported");
-      row.append(el("td", "", `${game.name} (${game.app_id})`));
+      const row = el("tr", game.hidden ? "unsupported game-hidden" : (game.accounts ? "" : "unsupported"));
+      const name = el("td");
+      const link = el("a", "game-link", `${game.name} (${game.app_id})`);
+      link.href = `https://steamcommunity.com/app/${game.app_id}/workshop/`;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.title = "Open its Steam Workshop";
+      name.append(link);
+      if (game.hidden) name.append(el("span", "hidden-tag", "hidden"));
+      row.append(name);
       row.append(el("td", "count", game.accounts ? `${game.accounts} working` : "no account"));
+      const actions = el("td", "actions-col");
+      const toggle = el("button", "btn btn-sm btn-outline-secondary", game.hidden ? "Show" : "Hide");
+      toggle.title = game.hidden
+        ? "Show this game on the site again"
+        : "Hide this game from the site, the game picker and account lists";
+      toggle.addEventListener("click", () => act(
+        `/api/admin/games/${game.app_id}/hidden`,
+        { method: "POST", body: JSON.stringify({ hidden: !game.hidden }) },
+        `${game.name} is ${game.hidden ? "visible again" : "hidden"}.`,
+      ));
+      actions.append(toggle);
+      row.append(actions);
       body.append(row);
     });
 }

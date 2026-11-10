@@ -281,6 +281,50 @@ class AccountPoolTests(unittest.TestCase):
         account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
         self.assertIn("Slay the Spire", [g["name"] for g in account["games"]])
 
+    def test_hidden_games(self) -> None:
+        _, client, pool = self.make_app()
+        self.steam.results["free_l"] = AccountCheck(True, [], licenses=[
+            License(1, True, [480, 440, 570], True)])
+        self.steam.app_info = {
+            480: AppInfo("Spacewar", "game", True),
+            440: AppInfo("Team Fortress 2", "game", True),
+            570: AppInfo("Dota 2", "game", True),
+        }
+        account_id = self.submit(client, "Free", "free_l").get_json()["account"]["id"]
+        pool.check_due_account()
+
+        def public_games():
+            return {g["name"] for g in client.get("/api/games", headers=TOKEN).get_json()["games"]}
+
+        # Spacewar is hidden by default. TF2 and Dota 2 have real Workshop content.
+        self.assertNotIn("Spacewar", public_games())
+        self.assertTrue({"Team Fortress 2", "Dota 2"} <= public_games())
+        account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
+        self.assertNotIn("Spacewar", [g["name"] for g in account["games"]])
+        self.assertEqual(client.post("/api/jobs", headers=TOKEN, json={
+            "app_id": 480, "url": JOB_URL}).status_code, 400)
+
+        client.get("/?admin=test-admin")
+        url = "/api/admin/games/{}/hidden"
+        self.assertEqual(client.post(url.format(440), json={"hidden": True}).status_code, 400)
+        for app_id in (440, 570):
+            client.post(url.format(app_id), headers=FETCH, json={"hidden": True})
+        client.post(url.format(480), headers=FETCH, json={"hidden": False})
+        self.assertEqual(public_games() & {"Spacewar", "Team Fortress 2", "Dota 2"}, {"Spacewar"})
+        admin_games = {g["name"]: g["hidden"] for g in
+                       client.get("/api/admin/accounts").get_json()["games"]}
+        self.assertTrue(admin_games["Team Fortress 2"])
+        self.assertFalse(admin_games["Spacewar"])
+        self.assertEqual(client.post(url.format(999999), headers=FETCH,
+                                     json={"hidden": True}).status_code, 404)
+
+        # An account that only owns hidden games is not useful.
+        client.post(url.format(480), headers=FETCH, json={"hidden": True})
+        pool.request_recheck(account_id)
+        pool.check_due_account()
+        account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
+        self.assertEqual(account["status"], "broken")
+
     def test_library_scan_adds_workshop_games(self) -> None:
         api = FakeSteamApi(
             {"76561197960265800": [(107410, "Arma 3"), (4000, "Garry's Mod"), (10, "No Workshop")]},

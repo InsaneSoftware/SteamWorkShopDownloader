@@ -22,6 +22,12 @@ log = logging.getLogger(__name__)
 MAX_TRANSIENT_FAILURES = 3
 RETRY_MINUTES = 5
 MAX_CATALOGUE_PROBES = 300
+# Free apps every Steam account gets, which Steam marks as having a Workshop
+# but which have nothing useful to download. The admin can show them again.
+DEFAULT_HIDDEN_GAMES = {
+    480: "Spacewar (Valve's Workshop test app)",
+    250820: "SteamVR (a tool, its Workshop only has VR backgrounds)",
+}
 # Lookups per check when a library is new. The rest follows 5 minutes later.
 MAX_PACKAGE_LOOKUPS = 100
 MAX_APP_LOOKUPS = 150
@@ -55,17 +61,27 @@ class AccountPool:
 
     # ----- games --------------------------------------------------------
 
-    def known_games(self) -> dict[int, str]:
+    def hidden_game_ids(self) -> set[int]:
+        """Default-hidden apps, adjusted by the admin's Hide/Show choices."""
+        choices = self.database.game_visibility()
+        hidden = {a for a in DEFAULT_HIDDEN_GAMES if choices.get(a) is not False}
+        return hidden | {a for a, is_hidden in choices.items() if is_hidden}
+
+    def known_games(self, include_hidden: bool = False) -> dict[int, str]:
         """Configured [[games]] plus Workshop titles found in account libraries."""
         games = {game.app_id: game.name for game in self.config.games}
         catalogue = self.database.app_catalog()
         for app_id in self.database.workshop_app_ids():
             games.setdefault(app_id, catalogue[app_id]["name"])
+        if not include_hidden:
+            for app_id in self.hidden_game_ids():
+                games.pop(app_id, None)
         return games
 
-    def supported_games(self) -> list[dict[str, Any]]:
+    def supported_games(self, include_hidden: bool = False) -> list[dict[str, Any]]:
         """Known games with the number of working accounts that own each."""
-        names = self.known_games()
+        names = self.known_games(include_hidden=True)
+        hidden = self.hidden_game_ids()
         counts = {app_id: 0 for app_id in self.config_game_ids()}
         for account in self.database.list_accounts():
             if account["enabled"] and account["status"] == "working":
@@ -73,11 +89,16 @@ class AccountPool:
                     if app_id in names:
                         counts[app_id] = counts.get(app_id, 0) + 1
         games = [
-            {"app_id": app_id, "name": names[app_id], "accounts": count}
+            {"app_id": app_id, "name": names[app_id], "accounts": count,
+             "hidden": app_id in hidden}
             for app_id, count in counts.items()
+            if include_hidden or app_id not in hidden
         ]
         games.sort(key=lambda game: game["name"].lower())
         return games
+
+    def set_game_hidden(self, app_id: int, hidden: bool) -> None:
+        self.database.set_game_visibility(app_id, hidden)
 
     def config_game_ids(self) -> list[int]:
         return [game.app_id for game in self.config.games]
@@ -251,7 +272,8 @@ class AccountPool:
             steam_id=steam_id or None,
             library_visible=library_visible,
         )
-        if owned:
+        # Games the admin hid do not make an account useful.
+        if owned - self.hidden_game_ids():
             self.database.update_account(
                 account_id,
                 status="working",
