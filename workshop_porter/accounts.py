@@ -28,9 +28,11 @@ DEFAULT_HIDDEN_GAMES = {
     480: "Spacewar (Valve's Workshop test app)",
     250820: "SteamVR (a tool, its Workshop only has VR backgrounds)",
 }
-# Lookups per check when a library is new. The rest follows 5 minutes later.
-MAX_PACKAGE_LOOKUPS = 100
-MAX_APP_LOOKUPS = 150
+# Lookups per check when a library is new. The rest follows 2 minutes later.
+# 1000 app lookups take about a minute and a half.
+MAX_PACKAGE_LOOKUPS = 500
+MAX_APP_LOOKUPS = 1000
+SCAN_RETRY_MINUTES = 2
 GUARD_CODE_REJECTED = (
     "Steam Guard code was wrong or expired. Share the account again with a new code."
 )
@@ -273,24 +275,28 @@ class AccountPool:
             library_visible=library_visible,
         )
         # Games the admin hid do not make an account useful.
+        scanning = (
+            f"Scanning game library, {scan_incomplete} left" if scan_incomplete else ""
+        )
         if owned - self.hidden_game_ids():
             self.database.update_account(
                 account_id,
                 status="working",
-                status_reason="",
+                status_reason=scanning,
                 owned_app_ids=sorted(owned),
                 broken_since=None,
                 next_check_at=_later(
-                    RETRY_MINUTES if scan_incomplete else self.config.account_check_minutes
+                    SCAN_RETRY_MINUTES if scan_incomplete
+                    else self.config.account_check_minutes
                 ),
                 **common,
             )
         elif scan_incomplete:
             self.database.update_account(
                 account_id,
-                status_reason="Scanning the game library",
+                status_reason=scanning,
                 owned_app_ids=[],
-                next_check_at=_later(RETRY_MINUTES),
+                next_check_at=_later(SCAN_RETRY_MINUTES),
                 **common,
             )
         else:
@@ -311,12 +317,12 @@ class AccountPool:
 
     def _library_from_licenses(
         self, account: dict[str, Any], licenses: list[License]
-    ) -> tuple[set[int], bool]:
+    ) -> tuple[set[int], int]:
         """Workshop games the account owns, from its Steam licences.
 
         Unknown packages and apps are looked up with a second SteamCMD run and
         cached, so later checks need only the login. Returns
-        ``(owned workshop app ids, lookup still incomplete)``.
+        ``(owned workshop app ids, number of lookups still to do)``.
         """
         active = [lic for lic in licenses if lic.active]
         cut_short = [lic.package_id for lic in active if not lic.complete]
@@ -332,18 +338,16 @@ class AccountPool:
         )
         packages_now = need_packages[:MAX_PACKAGE_LOOKUPS]
         apps_now = need_apps[:MAX_APP_LOOKUPS]
-        incomplete = len(packages_now) < len(need_packages) or len(apps_now) < len(need_apps)
+        login_failed = False
 
         if packages_now or apps_now:
             found = self.steamcmd.inspect_library(self.credentials(account), packages_now, apps_now)
             if found is None:
-                incomplete = True
+                login_failed = True
             else:
                 packages, apps = found
                 self.database.save_packages(packages)
                 for app_list in packages.values():
-                    if set(app_list) - app_ids:
-                        incomplete = True  # new apps to look up on the next check
                     app_ids |= set(app_list)
                 info = {a: (i.name, i.workshop) for a, i in apps.items()}
                 # Apps Steam returned nothing for are remembered as "no Workshop".
@@ -356,14 +360,18 @@ class AccountPool:
 
         catalogue = self.database.app_catalog(list(app_ids))
         owned = {a for a, row in catalogue.items() if row["workshop"] == 1}
-        return owned, incomplete
+        # Games (and cut-off licences) still to look up on the next check.
+        remaining = sum(
+            1 for a in app_ids if a not in catalogue or catalogue[a]["workshop"] is None
+        ) + len(need_packages) - (0 if login_failed else len(packages_now))
+        return owned, max(remaining, 1 if login_failed else 0)
 
     def _workshop_games(self, library: dict[int, str]) -> set[int]:
         catalogue = self.database.app_catalog(list(library))
         return {app_id for app_id, row in catalogue.items() if row["workshop"] == 1}
 
-    def _scan_store(self, app_ids: list[int]) -> bool:
-        """Ask the Store which unknown apps have a Workshop. True if some remain."""
+    def _scan_store(self, app_ids: list[int]) -> int:
+        """Ask the Store which unknown apps have a Workshop. Returns how many remain."""
         catalogue = self.database.app_catalog(app_ids)
         unknown = [a for a, row in catalogue.items() if row["workshop"] is None]
         batch = unknown[: self.config.max_store_lookups_per_check]
@@ -371,7 +379,7 @@ class AccountPool:
             self.database.set_app_workshop(app_id, catalog.has_workshop(app_id, self.opener))
         if batch:
             log.info("Steam catalogue: inspected %s apps, %s left", len(batch), len(unknown) - len(batch))
-        return len(unknown) > len(batch)
+        return len(unknown) - len(batch)
 
     def _logged(self, account: dict[str, Any]) -> dict[str, Any]:
         updated = self.database.get_account(account["id"])

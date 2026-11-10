@@ -257,6 +257,7 @@ class AccountPoolTests(unittest.TestCase):
         account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
         # RimWorld came from the full package list, so it is looked up next time.
         self.assertEqual([g["name"] for g in account["games"]], ["Garry's Mod", "Paralives"])
+        self.assertEqual(account["status_reason"], "Scanning game library, 1 left")
 
         pool.request_recheck(account_id)
         pool.check_due_account()
