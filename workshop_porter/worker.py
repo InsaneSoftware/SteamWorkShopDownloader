@@ -18,6 +18,7 @@ from .steamcmd import SteamCmdError
 
 
 log = logging.getLogger(__name__)
+DOWNLOAD_RETRY_SECONDS = 10
 
 
 @contextmanager
@@ -140,10 +141,20 @@ class QueueWorker:
             raise RuntimeError(
                 f"No working Steam account in the pool owns {job['game_name']}."
             )
+        # Up to three accounts. With only one, a network hiccup gets a second
+        # try on the same account.
+        attempts = accounts[:3] if len(accounts) > 1 else accounts * 2
         last_error: Exception | None = None
-        for account in accounts[:3]:
+        for number, account in enumerate(attempts):
+            if number and isinstance(last_error, SteamCmdError) and last_error.retryable:
+                self._stop.wait(DOWNLOAD_RETRY_SECONDS)
             self.database.update_job(
-                job_id, message=f"Downloading via {account['display_name']}"
+                job_id,
+                progress=5,
+                message=(
+                    f"Downloading via {account['display_name']}"
+                    + (f" (attempt {number + 1})" if number else "")
+                ),
             )
             self.pool.mark_used(account["id"])
             try:
@@ -156,12 +167,18 @@ class QueueWorker:
                     self.pool.credentials(account),
                 )
             except SteamCmdError as exc:
-                if not exc.login_failed:
-                    raise
-                # Let the checker confirm and flag it; try the next account.
-                log.warning("Login failed for account %s", account["id"][:8])
-                self.pool.request_recheck(account["id"])
                 last_error = exc
+                if exc.login_failed:
+                    # Let the checker confirm and flag it. Try the next account.
+                    log.warning("Login failed for account %s", account["id"][:8])
+                    self.pool.request_recheck(account["id"])
+                elif exc.retryable:
+                    log.warning(
+                        "Download of %s hit a Steam network error via %s, retrying",
+                        job["workshop_id"], account["id"][:8],
+                    )
+                else:
+                    raise
         raise last_error or RuntimeError("No Steam account could log in")
 
     def _make_zip(self, source: Path, destination: Path, workshop_id: str, progress) -> int:

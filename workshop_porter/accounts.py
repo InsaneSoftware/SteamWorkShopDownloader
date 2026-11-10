@@ -33,6 +33,8 @@ DEFAULT_HIDDEN_GAMES = {
 MAX_PACKAGE_LOOKUPS = 500
 MAX_APP_LOOKUPS = 1000
 SCAN_RETRY_MINUTES = 2
+# Accounts broken by a rate limit, Steam outage or unknown login error.
+TRANSIENT_BROKEN_RECHECK_MINUTES = 30
 GUARD_CODE_REJECTED = (
     "Steam Guard code was wrong or expired. Share the account again with a new code."
 )
@@ -417,7 +419,11 @@ class AccountPool:
             consecutive_failures=failures,
             last_checked_at=now,
             broken_since=account.get("broken_since") or now,
-            next_check_at=_later(self.config.broken_recheck_minutes),
+            # Rate limits and Steam outages pass, so retry those sooner.
+            next_check_at=_later(
+                TRANSIENT_BROKEN_RECHECK_MINUTES if transient
+                else self.config.broken_recheck_minutes
+            ),
         )
 
     def request_recheck(self, account_id: str) -> None:

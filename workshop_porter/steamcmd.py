@@ -86,9 +86,18 @@ class AccountCheck:
 
 
 class SteamCmdError(RuntimeError):
-    def __init__(self, message: str, login_failed: bool = False):
+    def __init__(self, message: str, login_failed: bool = False, retryable: bool = False):
         super().__init__(message)
         self.login_failed = login_failed
+        # A Steam network hiccup: worth trying again, maybe with another account.
+        self.retryable = retryable
+
+
+# Download failures caused by Steam's network or servers, not by the item.
+RETRYABLE_DOWNLOAD_FAILURES = (
+    "no connection", "timeout", "timed out", "service unavailable", "busy",
+    "rate limit", "limit exceeded", "try another cm", "failure",
+)
 
 
 @dataclass
@@ -233,18 +242,25 @@ class SteamCmd:
             "SteamCMD completed: app_id=%s workshop_id=%s return_code=%s target=%s exists=%s",
             app_id, workshop_id, result.return_code, target, downloaded,
         )
+        reason = ""
         if failure:
             log.error("SteamCMD reported a workshop download failure: %s", failure)
+            reason = FAILURE_RE.search(failure).group(2).lower()
+        retryable = result.timed_out or any(
+            word in reason for word in RETRYABLE_DOWNLOAD_FAILURES
+        )
         if result.return_code != 0 and not downloaded:
             detail = "\n".join(result.lines[-8:])
             raise SteamCmdError(
-                detail or f"SteamCMD exited with code {result.return_code}"
+                detail or f"SteamCMD exited with code {result.return_code}",
+                retryable=retryable,
             )
         if not downloaded:
             detail = "\n".join(result.lines[-8:])
             raise SteamCmdError(
                 "SteamCMD finished but the workshop content was not created."
-                + (f"\n{detail}" if detail else "")
+                + (f"\n{detail}" if detail else ""),
+                retryable=retryable,
             )
         return target
 

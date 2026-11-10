@@ -4,6 +4,7 @@ import io
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -41,6 +42,9 @@ class FakeSteam:
         self.packages: dict[int, list[int]] = {}
         self.app_info: dict[int, AppInfo] = {}
         self.inspections: list[tuple[list[int], list[int]]] = []
+
+    def download(self, app_id, workshop_id, progress, account):
+        raise NotImplementedError
 
     def check_account(self, account, app_ids):
         self.calls.append((account, app_ids))
@@ -281,6 +285,68 @@ class AccountPoolTests(unittest.TestCase):
         pool.check_due_account()
         account = client.get(f"/api/accounts/{account_id}", headers=TOKEN).get_json()["account"]
         self.assertIn("Slay the Spire", [g["name"] for g in account["games"]])
+
+    def test_download_retries_network_errors(self) -> None:
+        from workshop_porter import worker as worker_module
+        from workshop_porter.steamcmd import SteamCmdError
+
+        app, client, pool = self.make_app()
+        worker_module.DOWNLOAD_RETRY_SECONDS = 0
+        worker = app.extensions["workshop_worker"]
+        job = {"id": "j1", "app_id": 107410, "game_name": "Arma 3", "workshop_id": "123"}
+        app.extensions["workshop_database"].create_job({
+            **job, "item_name": None, "source_url": JOB_URL, "status": "downloading",
+            "progress": 0, "message": "", "error": None, "archive_name": None,
+            "archive_bytes": None, "download_token": "t", "created_at": "2026",
+            "started_at": None, "completed_at": None, "expires_at": None,
+        }, 10)
+        used: list[str] = []
+
+        def download_with(errors):
+            def download(app_id, workshop_id, progress, account):
+                used.append(account.username)
+                if errors:
+                    raise errors.pop(0)
+                return self.root / "ok"
+            return download
+
+        no_connection = SteamCmdError("failed (No Connection)", retryable=True)
+
+        # One account: a network error is retried on the same account.
+        self.submit(client, "Solo", "solo_l")
+        self.drain(pool)
+        self.steam.download = download_with([no_connection])
+        self.assertEqual(worker._download_with_pool(job), self.root / "ok")
+        self.assertEqual(used, ["solo_l", "solo_l"])
+
+        # Several accounts: the next one is used.
+        self.submit(client, "Second", "second_l")
+        self.drain(pool)
+        used.clear()
+        self.steam.download = download_with([no_connection])
+        worker._download_with_pool(job)
+        self.assertEqual(len(set(used)), 2)
+
+        # An error caused by the item itself is not retried.
+        used.clear()
+        self.steam.download = download_with([SteamCmdError("File Not Found")])
+        with self.assertRaises(SteamCmdError):
+            worker._download_with_pool(job)
+        self.assertEqual(len(used), 1)
+
+    def test_rate_limited_accounts_are_rechecked_sooner(self) -> None:
+        app, client, pool = self.make_app()
+        account_id = self.submit(client, "Limited", "limit_l").get_json()["account"]["id"]
+        self.steam.results["limit_l"] = AccountCheck(
+            False, reason="Steam rate limit reached", transient=True)
+        for _ in range(3):
+            pool.request_recheck(account_id)
+            pool.check_due_account()
+        account = app.extensions["workshop_database"].get_account(account_id)
+        self.assertEqual(account["status"], "broken")
+        minutes = (datetime.fromisoformat(account["next_check_at"])
+                   - datetime.now(timezone.utc)).total_seconds() / 60
+        self.assertLess(minutes, 31)
 
     def test_hidden_games(self) -> None:
         _, client, pool = self.make_app()
