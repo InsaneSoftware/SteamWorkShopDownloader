@@ -17,6 +17,10 @@ DETAILS_URL = (
 class WorkshopDetails:
     title: str
     consumer_app_id: int
+    preview_url: str = ""
+    file_size: int = 0
+    subscriptions: int = 0
+    time_updated: int = 0
 
 
 def fetch_workshop_details(
@@ -50,9 +54,16 @@ def fetch_workshop_details(
         app_id = int(item.get("consumer_app_id", 0))
         if not title or app_id <= 0:
             return None
+        preview = str(item.get("preview_url", ""))
+        if not preview.startswith("https://"):
+            preview = ""
         return WorkshopDetails(
             title=title[:200],
             consumer_app_id=app_id,
+            preview_url=preview[:500],
+            file_size=max(0, int(item.get("file_size") or 0)),
+            subscriptions=max(0, int(item.get("subscriptions") or 0)),
+            time_updated=max(0, int(item.get("time_updated") or 0)),
         )
     except (HTTPError, URLError, TimeoutError, ValueError, TypeError, json.JSONDecodeError):
         return None

@@ -348,6 +348,63 @@ class AccountPoolTests(unittest.TestCase):
                    - datetime.now(timezone.utc)).total_seconds() / 60
         self.assertLess(minutes, 31)
 
+    def test_game_is_detected_from_the_link(self) -> None:
+        from workshop_porter.metadata import WorkshopDetails
+
+        items = {
+            "843577117": WorkshopDetails("RHS", 107410, "https://img/x.jpg", 1024, 5000, 1700000000),
+            "222222222": WorkshopDetails("Some Mod", 999999),
+        }
+        lookups: list[str] = []
+
+        def fetcher(workshop_id):
+            lookups.append(workshop_id)
+            return items.get(workshop_id)
+
+        app = create_app(
+            make_config(self.root, games=(Game(107410, "Arma 3"),)),
+            start_worker=False, metadata_fetcher=fetcher, steamcmd=self.steam,
+            app_name_fetcher=lambda app_id: "Two Point Museum",
+        )
+        client = app.test_client()
+        pool = app.extensions["workshop_accounts"]
+        self.submit(client, "Owner", "owner_l")
+        while pool.check_due_account():
+            pass
+
+        preview = client.get("/api/workshop/lookup", headers=TOKEN,
+                             query_string={"url": JOB_URL}).get_json()
+        self.assertEqual((preview["title"], preview["game"], preview["supported"],
+                          preview["accounts"]), ("RHS", "Arma 3", True, 1))
+        self.assertEqual(preview["preview_url"], "https://img/x.jpg")
+        unsupported = client.get("/api/workshop/lookup", headers=TOKEN,
+                                 query_string={"url": "222222222"}).get_json()
+        self.assertFalse(unsupported["supported"])
+        self.assertEqual(unsupported["game"], "Two Point Museum")
+        missing = client.get("/api/workshop/lookup", headers=TOKEN,
+                             query_string={"url": "333333333"}).get_json()
+        self.assertFalse(missing["found"])
+        self.assertEqual(client.get("/api/workshop/lookup",
+                                    query_string={"url": JOB_URL}).status_code, 401)
+        self.assertEqual(client.get("/api/workshop/lookup", headers=TOKEN,
+                                    query_string={"url": "https://example.com/?id=123456"}
+                                    ).status_code, 400)
+
+        # No game chosen: detected from the link. A bare ID works too.
+        response = client.post("/api/jobs", headers=TOKEN, json={"url": "843577117"})
+        self.assertEqual(response.status_code, 201, response.get_json())
+        job = response.get_json()["job"]
+        self.assertEqual((job["game_name"], job["item_name"]), ("Arma 3", "RHS"))
+        self.assertIn("filedetails/?id=843577117", job["source_url"])
+        # The lookup above was cached, so Steam was asked once for that item.
+        self.assertEqual(lookups.count("843577117"), 1)
+
+        response = client.post("/api/jobs", headers=TOKEN, json={"url": "222222222"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('"Two Point Museum" is not supported yet', response.get_json()["error"])
+        response = client.post("/api/jobs", headers=TOKEN, json={"url": "333333333"})
+        self.assertIn("Pick the game yourself", response.get_json()["error"])
+
     def test_hidden_games(self) -> None:
         _, client, pool = self.make_app()
         self.steam.results["free_l"] = AccountCheck(True, [], licenses=[

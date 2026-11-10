@@ -60,3 +60,17 @@ def has_workshop(app_id: int, opener=urlopen) -> bool | None:
         return False
     categories = data.get("data", {}).get("categories", [])
     return any(category.get("description") == "Steam Workshop" for category in categories)
+
+
+def fetch_app_name(app_id: int, opener=urlopen) -> str | None:
+    """The game's name from the public Store API, or ``None``."""
+    query = urlencode({"appids": app_id, "filters": "basic", "l": "english"})
+    try:
+        with opener(f"{APP_DETAILS_URL}?{query}", timeout=8) as response:
+            details = json.load(response)
+    except Exception as exc:
+        log.warning("Steam Store: could not read the name of app_id=%s: %s", app_id, exc)
+        return None
+    data = (details or {}).get(str(app_id), {})
+    name = str((data.get("data") or {}).get("name", "")).strip() if data.get("success") else ""
+    return name[:200] or None

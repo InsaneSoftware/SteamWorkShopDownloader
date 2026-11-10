@@ -57,17 +57,22 @@
         </div>
 
         <div class="form-row">
+          <label for="workshopUrl">Workshop link</label>
+          <input class="form-control form-control-sm" id="workshopUrl" name="url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="Paste a Workshop link or item ID" required>
+        </div>
+
+        <div class="preview-row">
+          <div id="itemPreview" class="item-preview" aria-live="polite" hidden></div>
+        </div>
+
+        <div class="form-row">
           <label for="gameSelect">Game</label>
-          <select class="form-select form-select-sm" id="gameSelect" name="app_id" required>
+          <select class="form-select form-select-sm" id="gameSelect" name="app_id">
+            <option value="" selected>Detect from link</option>
             {% for app_id, game_name in games.items() %}
             <option value="{{ app_id }}">{{ game_name }} ({{ app_id }})</option>
             {% endfor %}
           </select>
-        </div>
-
-        <div class="form-row">
-          <label for="workshopUrl">Workshop link</label>
-          <input class="form-control form-control-sm" id="workshopUrl" name="url" type="url" inputmode="url" placeholder="https://steamcommunity.com/sharedfiles/filedetails/?id=..." required>
         </div>
 
         <div class="form-actions">
@@ -203,6 +208,8 @@
     </article>
   </template>
 
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous" defer></script>
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='preview.js') }}" defer></script>
 </body>
 </html>

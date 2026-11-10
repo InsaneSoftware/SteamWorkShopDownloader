@@ -22,6 +22,7 @@ from .config import Config
 from .database import (
     ActiveJobError, Database, DuplicateAccountError, QueueFullError, utc_now,
 )
+from .catalog import fetch_app_name
 from .metadata import fetch_workshop_details
 from .security import IpGuard, expiry_from_hours, normalize_ip, parse_block_target
 from .steamcmd import SteamCmd
@@ -66,7 +67,10 @@ class DownloadLimiter:
 
 
 def parse_workshop_url(value: str) -> str:
-    parsed = urlparse(value.strip())
+    value = value.strip()
+    if WORKSHOP_ID_RE.fullmatch(value):
+        return value  # a bare item ID
+    parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or parsed.hostname not in ALLOWED_HOSTS:
         raise ValueError("Use a steamcommunity.com Workshop link")
     if parsed.path.rstrip("/") not in {
@@ -86,9 +90,11 @@ def create_app(
     metadata_fetcher=None,
     steamcmd: SteamCmd | None = None,
     steam_api_opener=None,
+    app_name_fetcher=None,
 ) -> Flask:
     config = config or Config.from_file()
     metadata_fetcher = metadata_fetcher or fetch_workshop_details
+    app_name_fetcher = app_name_fetcher or fetch_app_name
     config.data_dir.mkdir(parents=True, exist_ok=True)
     config.archive_dir.mkdir(parents=True, exist_ok=True)
     database = Database(config.database_path)
@@ -303,6 +309,72 @@ def create_app(
             ]
         )
 
+    # Steam item details, cached so pasting a link twice does not ask again.
+    details_cache: dict[str, tuple[float, object]] = {}
+    details_lock = threading.Lock()
+
+    def workshop_details(workshop_id: str):
+        now = time.monotonic()
+        with details_lock:
+            cached = details_cache.get(workshop_id)
+            if cached and now - cached[0] < 600:
+                return cached[1]
+        details = metadata_fetcher(workshop_id)
+        with details_lock:
+            if len(details_cache) > 2000:
+                details_cache.clear()
+            # Failed lookups are only remembered briefly.
+            details_cache[workshop_id] = (now if details else now - 540, details)
+        return details
+
+    def game_name_for(app_id: int) -> str:
+        names = pool.known_games(include_hidden=True)
+        if app_id in names:
+            return names[app_id]
+        row = database.app_catalog([app_id]).get(app_id)
+        if row and not row["name"].startswith("Steam app "):
+            return row["name"]
+        # Not owned by any account yet: ask the Store once and remember it.
+        name = app_name_fetcher(app_id)
+        if name:
+            database.remember_apps({app_id: name})
+            return name
+        return f"Steam app {app_id}"
+
+    @app.get("/api/workshop/lookup")
+    def workshop_lookup():
+        """Live preview for a pasted Workshop link: item, game and support."""
+        auth_error = require_admin()
+        if auth_error:
+            return auth_error
+        try:
+            workshop_id = parse_workshop_url(request.args.get("url", ""))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        details = workshop_details(workshop_id)
+        if not details:
+            return jsonify(
+                workshop_id=workshop_id,
+                found=False,
+                error="Steam does not know this item. It may be private or removed.",
+            )
+        app_id = details.consumer_app_id
+        supported = app_id in pool.known_games()
+        accounts = len(pool.accounts_for_app(app_id)) if supported else 0
+        return jsonify(
+            workshop_id=workshop_id,
+            found=True,
+            title=details.title,
+            preview_url=details.preview_url,
+            file_size=details.file_size,
+            subscriptions=details.subscriptions,
+            time_updated=details.time_updated,
+            app_id=app_id,
+            game=game_name_for(app_id),
+            supported=supported,
+            accounts=accounts,
+        )
+
     @app.post("/api/jobs")
     def create_job_route():
         auth_error = require_admin()
@@ -311,7 +383,25 @@ def create_app(
         payload = request.get_json(silent=True) or {}
         games_by_app_id = pool.known_games()
         try:
-            app_id = int(payload.get("app_id", 0))
+            source_url = str(payload.get("url", "")).strip()
+            workshop_id = parse_workshop_url(source_url)
+            if WORKSHOP_ID_RE.fullmatch(source_url):
+                source_url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={workshop_id}"
+            details = workshop_details(workshop_id)
+            app_id = int(payload.get("app_id") or 0)
+            if not app_id:
+                # "Detect from link": the game comes from Steam's item details.
+                if not details:
+                    raise ValueError(
+                        "Could not look up this Workshop item on Steam. "
+                        "Pick the game yourself and try again."
+                    )
+                app_id = details.consumer_app_id
+                if app_id not in games_by_app_id:
+                    raise ValueError(
+                        f'"{game_name_for(app_id)}" is not supported yet. '
+                        "Share an account that owns it to add it."
+                    )
             if app_id not in games_by_app_id:
                 raise ValueError("Choose one of the supported games")
             if not pool.accounts_for_app(app_id):
@@ -319,9 +409,6 @@ def create_app(
                     f"No working Steam account owns {games_by_app_id[app_id]} yet. "
                     "Add an account that owns it to the pool."
                 )
-            source_url = str(payload.get("url", "")).strip()
-            workshop_id = parse_workshop_url(source_url)
-            details = metadata_fetcher(workshop_id)
             if details and details.consumer_app_id != app_id:
                 actual_game = games_by_app_id.get(
                     details.consumer_app_id,

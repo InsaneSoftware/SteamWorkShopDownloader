@@ -43,6 +43,7 @@ jobForm.addEventListener("submit", async (event) => {
       : "That item is already in the active queue.";
     showMessage(resultMessage, "success");
     document.querySelector("#workshopUrl").value = "";
+    if (window.jQuery) window.jQuery("#jobForm").trigger("workshop:queued");
     await refreshQueue();
   } catch (error) {
     showMessage(error.message, "error");
