@@ -297,8 +297,10 @@ show up in the Blocks tab and can be removed there. Local addresses and a
 logged in admin are never blocked automatically.
 
 The **Blocks** tab blocks an IP or a range such as `203.0.113.0/24`, for
-1 hour up to permanently, with an optional reason. Blocked visitors get a
-`403` with the time the block ends. An admin is never blocked while logged in.
+1 hour up to permanently, with an optional reason. Blocked visitors see a
+"You are blocked" page with the reason and a countdown to the end of the block.
+The reason you enter is shown to them, so keep it short and neutral. Automatic
+blocks show "Anti spam" with the cause. An admin is never blocked while logged in.
 Local and private addresses cannot be blocked.
 
 The same tab blocks user agents, either an exact user agent (an empty one
@@ -594,3 +596,12 @@ Before making the service public:
 - Use Nginx offload and a per-client connection limit for public ZIP downloads.
 - Use a dedicated Steam account with only the access the service needs.
 - Back up configuration privately, never inside the public repository.
+
+## Development
+
+Workshop Downloader is built and actively developed by **Insane Software**.
+
+Claude, an AI assistant by Anthropic, helps with the design and with
+automation and helper tools that make Workshop Downloader better. Claude is
+also used for code review. Insane Software decides what goes in and tests
+every change before it goes live.
