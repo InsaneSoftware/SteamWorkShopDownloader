@@ -470,7 +470,8 @@ option:disabled { color: #6b7179; }
 .log-table tr.log-rejected .log-status,
 .log-table tr.log-denied .log-status,
 .log-table tr.log-not_found .log-status,
-.log-table tr.log-queue_full .log-status { color: #e08a8a; }
+.log-table tr.log-queue_full .log-status,
+.log-table tr.log-limit .log-status { color: #e08a8a; }
 .log-table tr.log-ok .log-status,
 .log-table tr.log-queued .log-status,
 .log-table tr.log-submitted .log-status { color: var(--success); }

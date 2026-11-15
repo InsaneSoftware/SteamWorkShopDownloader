@@ -291,6 +291,11 @@ IPs are blocked automatically for 24 hours when they:
   not count.
 - download more than 25 different files in 24 hours. The 26th is refused.
 
+Each IP can also request 25 new items in 24 hours. The 26th is refused with
+a message that says when a new request is possible again. This does not block
+the IP. Items that are already in the queue or finished still work, and they
+do not count toward the limit.
+
 Requesting an item that already finished reuses that archive, as long as it
 still exists and the item was not updated on Steam since. Automatic blocks
 show up in the Blocks tab and can be removed there. Local addresses and a

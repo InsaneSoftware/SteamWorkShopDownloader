@@ -266,6 +266,35 @@ class ActivityAndBlockTests(unittest.TestCase):
             "app_id": 107410, "url": JOB_URL})
         self.assertEqual(response.status_code, 201)
 
+    def test_more_than_25_new_requests_a_day_are_refused(self) -> None:
+        self.app = create_app(
+            make_config(self.root, max_queue_size=100), start_worker=False,
+            metadata_fetcher=lambda _: None, steamcmd=FakeSteam(),
+        )
+        visitor = self.client(BAD)
+        visitor.post("/api/accounts", headers=TOKEN, json={
+            "display_name": "Donor", "username": "donor_l", "password": "pw"})
+        pool = self.app.extensions["workshop_accounts"]
+        while pool.check_due_account():
+            pass
+
+        def request(client, number):
+            return client.post("/api/jobs", headers=TOKEN, json={
+                "app_id": 107410, "url": JOB_URL.replace("843577117", str(900000000 + number))})
+
+        for number in range(25):
+            self.assertEqual(request(visitor, number).status_code, 201, number)
+        refused = request(visitor, 25)
+        self.assertEqual(refused.status_code, 429)
+        self.assertIn("daily limit", refused.get_json()["error"])
+        self.assertIn("again in 24 hours", refused.get_json()["error"])
+        # An item already in the queue still works, and the IP is not blocked.
+        self.assertEqual(request(visitor, 3).status_code, 200)
+        self.assertEqual(visitor.get("/api/jobs", headers=TOKEN).status_code, 200)
+        # Other visitors and the admin are not limited.
+        self.assertEqual(request(self.client("192.0.2.81"), 25).status_code, 201)
+        self.assertEqual(request(self.admin(), 26).status_code, 201)
+
     def test_expired_block_is_ignored(self) -> None:
         self.database.add_block(BAD, "old", "2000-01-01T00:00:00+00:00")
         self.app.extensions["workshop_ip_guard"].invalidate()

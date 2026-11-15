@@ -20,12 +20,12 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .accounts import AccountPool
 from .config import Config
 from .database import (
-    ActiveJobError, Database, DuplicateAccountError, QueueFullError, utc_now,
+    ActiveJobError, DailyLimitError, Database, DuplicateAccountError, QueueFullError, utc_now,
 )
 from .catalog import fetch_app_name
 from .metadata import fetch_workshop_details
 from .security import (
-    AUTO_BLOCK_FAILURES, AUTO_BLOCK_HOURS, DAILY_DOWNLOAD_LIMIT, IpGuard, is_blockable, expiry_from_hours, normalize_ip,
+    AUTO_BLOCK_FAILURES, AUTO_BLOCK_HOURS, DAILY_DOWNLOAD_LIMIT, DAILY_REQUEST_LIMIT, IpGuard, is_blockable, expiry_from_hours, normalize_ip,
     parse_block_target, parse_ua_block,
 )
 from .steamcmd import SteamCmd
@@ -502,8 +502,18 @@ def create_app(
                 datetime.fromtimestamp(details.time_updated, timezone.utc).isoformat()
                 if details and details.time_updated else ""
             )
+            # Each IP may queue DAILY_REQUEST_LIMIT new items a day. Items
+            # already queued or finished still work after that.
+            visitor_ip = client_ip()
+            since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            requested, oldest = database.requests_since(visitor_ip, since)
+            limited = (
+                requested >= DAILY_REQUEST_LIMIT
+                and is_blockable(visitor_ip)
+                and not has_admin_access()
+            )
             stored, created = database.create_job(
-                job, config.max_queue_size, ready_since=updated,
+                job, config.max_queue_size, ready_since=updated, allow_new=not limited,
                 usable=lambda row: bool(row.get("archive_name"))
                 and Path(row["archive_name"]).name == row["archive_name"]
                 and (config.archive_dir / row["archive_name"]).is_file(),
@@ -529,6 +539,22 @@ def create_app(
         except QueueFullError as exc:
             log_activity("request", "queue_full", str(payload.get("url", ""))[:300])
             return jsonify(error=str(exc)), 429
+        except DailyLimitError:
+            log_activity("request", "limit", str(payload.get("url", ""))[:300])
+            wait = ""
+            if oldest:
+                free_at = datetime.fromisoformat(oldest) + timedelta(hours=24)
+                minutes = max(1, -(-int((free_at - datetime.now(timezone.utc)).total_seconds()) // 60))
+                hours, mins = divmod(minutes, 60)
+                parts = [f"{hours} hour{'s' if hours != 1 else ''}"] if hours else []
+                if mins:
+                    parts.append(f"{mins} minute{'s' if mins != 1 else ''}")
+                wait = f" You can request a new item again in {' and '.join(parts)}."
+            return jsonify(error=(
+                f"You requested {DAILY_REQUEST_LIMIT} new items in the last 24 hours. "
+                "That is the daily limit. Items that are already in the queue or "
+                f"ready still work.{wait}"
+            )), 429
 
     @app.get("/api/jobs/<job_id>")
     def get_job(job_id: str):

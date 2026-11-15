@@ -180,12 +180,14 @@ class Database:
         max_queue_size: int,
         ready_since: str | None = None,
         usable: Callable[[dict[str, Any]], bool] | None = None,
+        allow_new: bool = True,
     ) -> tuple[dict[str, Any], bool]:
         """Queue a job, or return a matching one that is queued or running.
 
         With ``ready_since`` a finished job for the same item, completed at or
         after that time and not expired, is returned too, so the same item is
-        not fetched from Steam again.
+        not fetched from Steam again. With ``allow_new`` False only such a
+        match is returned and DailyLimitError is raised otherwise.
         """
         with closing(self.connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -216,6 +218,9 @@ class Database:
             if existing:
                 connection.commit()
                 return dict(existing), False
+            if not allow_new:
+                connection.rollback()
+                raise DailyLimitError()
 
             queued = connection.execute(
                 "SELECT COUNT(*) FROM jobs WHERE status = 'queued'"
@@ -754,6 +759,18 @@ class Database:
                 "SELECT 1 FROM ip_downloads WHERE ip = ? AND job_id = ?", (ip, job_id)
             ).fetchone() is not None
 
+    def requests_since(self, ip: str, since: str) -> tuple[int, str | None]:
+        """New items an IP queued since then, and when the oldest was queued."""
+        with closing(self.connect()) as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*), MIN(at) FROM activity_log
+                WHERE ip = ? AND at >= ? AND action = 'request' AND status = 'queued'
+                """,
+                (ip, since),
+            ).fetchone()
+            return row[0], row[1]
+
     def downloads_since(self, ip: str, since: str) -> int:
         with closing(self.connect()) as connection:
             return connection.execute(
@@ -814,6 +831,10 @@ class DuplicateAccountError(RuntimeError):
 
 
 class QueueFullError(RuntimeError):
+    pass
+
+
+class DailyLimitError(RuntimeError):
     pass
 
 
