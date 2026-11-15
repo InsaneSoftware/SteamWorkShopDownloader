@@ -192,18 +192,26 @@ def create_app(
             log_activity("blocked", "denied", f"{request.method} {request.path}"[:120])
         return blocked_response(block, what)
 
-    def blocked_response(block, what: str = "IP address", why: str = ""):
-        reason = block.get("reason") or ""
-        if not why and reason.startswith("Auto: "):
-            why = f"Anti spam: {reason.removeprefix('Auto: ')}. "
+    def blocked_response(block, what: str = "IP address"):
+        reason = (block.get("reason") or "").strip()
+        if reason.startswith("Auto: "):
+            reason = f"Anti spam: {reason.removeprefix('Auto: ')}"
+        reason = reason or "Blocked by the admin"
+        expires_at = block.get("expires_at")
         until = (
-            "permanently" if block["expires_at"] is None
-            else "until " + block["expires_at"][:16].replace("T", " ") + " UTC"
+            "permanently" if expires_at is None
+            else "until " + expires_at[:16].replace("T", " ") + " UTC"
         )
-        message = f"{why}Your {what} is blocked {until}."
-        if request.path.startswith("/api/") or request.path.startswith("/download/"):
-            return jsonify(error=message, blocked=True), 403
-        return app.response_class(message, status=403, mimetype="text/plain")
+        message = f"{reason}. Your {what} is blocked {until}."
+        if request.path.startswith("/api/"):
+            return jsonify(
+                error=message, blocked=True, reason=reason, expires_at=expires_at,
+            ), 403
+        return render_template(
+            "blocked.html", reason=reason, what=what, expires_at=expires_at,
+            until=until,
+        ), 403
+
     if start_worker:
         worker.start()
 
@@ -593,11 +601,10 @@ def create_app(
                         f"More than {DAILY_DOWNLOAD_LIMIT} downloads in 24 hours, "
                         f"blocked for {AUTO_BLOCK_HOURS} hours",
                     )
-                return jsonify(error=(
-                    f"Anti spam: you downloaded {DAILY_DOWNLOAD_LIMIT} files in the last "
-                    "24 hours. That is the daily limit, so this IP address is blocked "
-                    f"for {AUTO_BLOCK_HOURS} hours."
-                ), blocked=True), 403
+                return blocked_response(ip_guard.block_for(visitor_ip) or {
+                    "reason": f"Auto: more than {DAILY_DOWNLOAD_LIMIT} downloads in 24 hours",
+                    "expires_at": None,
+                })
             database.record_download(visitor_ip, job["id"])
             log_activity("download", "ok", label, job.get("archive_bytes"))
 

@@ -20,6 +20,8 @@ function showBlocked(message) {
   document.querySelector("#blockedText").textContent = message;
   document.querySelector("#blockedNotice").hidden = false;
   window.scrollTo({ top: 0, behavior: "smooth" });
+  // The blocked page shows the reason and a countdown to the end.
+  window.setTimeout(() => window.location.assign("/"), 2500);
 }
 
 document.querySelector("#blockedClose").addEventListener("click", () => {

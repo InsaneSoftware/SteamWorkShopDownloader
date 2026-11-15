@@ -595,3 +595,46 @@ option:disabled { color: #6b7179; }
 .blocked-notice strong { color: #fff; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
 .blocked-notice span { flex: 1; min-width: 200px; }
 .blocked-notice .link-button { color: #f0c4c4; }
+
+/* ----- Blocked page ----------------------------------------------------- */
+
+.blocked-page main { padding: 24px 0 40px; }
+.blocked-card { max-width: 560px; margin: 24px auto; border-color: #7e4c4c; }
+.blocked-card .panel-title { background: linear-gradient(#5a3337, #3d2629); }
+.blocked-body { padding: 26px 22px 28px; text-align: center; }
+.blocked-icon { font-size: 40px; line-height: 1; margin-bottom: 14px; }
+.blocked-label {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.blocked-reason-text { color: #f0c4c4; font-size: 15px; font-weight: 700; }
+.blocked-reason { margin-bottom: 24px; }
+.blocked-timer[hidden], .blocked-done[hidden] { display: none; }
+.countdown { display: flex; justify-content: center; gap: 10px; margin: 6px 0 10px; }
+.countdown div {
+  width: 84px;
+  padding: 10px 0 8px;
+  border: 1px solid var(--border);
+  background: var(--page);
+}
+.countdown b {
+  display: block;
+  color: #fff;
+  font: 700 30px/1.1 Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.countdown span { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+.blocked-until { color: var(--muted); font-size: 11px; }
+.blocked-back {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 6px 16px;
+  text-decoration: none;
+}
+@media (max-width: 420px) {
+  .countdown div { width: 70px; }
+  .countdown b { font-size: 24px; }
+}

@@ -97,7 +97,11 @@ class ActivityAndBlockTests(unittest.TestCase):
         response = blocked.get("/api/jobs", headers=TOKEN)
         self.assertEqual(response.status_code, 403)
         self.assertIn("blocked until", response.get_json()["error"])
-        self.assertEqual(blocked.get("/").status_code, 403)
+        page = blocked.get("/")
+        self.assertEqual(page.status_code, 403)
+        self.assertIn(b"You are blocked", page.data)
+        self.assertIn(b"countdown", page.data)
+        self.assertIn(b"spam", page.data)
         self.assertEqual(blocked.get("/static/app.css").status_code, 200)
         self.assertEqual(self.client(GOOD).get("/api/jobs", headers=TOKEN).status_code, 200)
 

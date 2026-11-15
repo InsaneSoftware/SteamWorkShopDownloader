@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Blocked · Workshop Downloader</title>
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
+</head>
+<body class="blocked-page">
+  <header class="topbar">
+    <div class="container-shell">
+      <div>
+        <h1>Workshop Downloader <small>unofficial</small></h1>
+      </div>
+    </div>
+  </header>
+
+  <main class="container-shell">
+    <section class="forum-panel blocked-card" id="blockedCard" data-expires="{{ expires_at or '' }}">
+      <div class="panel-title">
+        <h2>You are blocked</h2>
+        <span>{{ what }}</span>
+      </div>
+      <div class="blocked-body">
+        <div class="blocked-icon" aria-hidden="true">&#x26D4;</div>
+
+        <div class="blocked-reason">
+          <div class="blocked-label">Reason</div>
+          <div class="blocked-reason-text">{{ reason }}</div>
+        </div>
+
+        {% if expires_at %}
+        <div class="blocked-timer" id="blockedTimer">
+          <div class="blocked-label">You can use the site again in</div>
+          <div class="countdown" id="countdown" aria-live="polite">
+            <div><b id="cdHours">--</b><span>hours</span></div>
+            <div><b id="cdMinutes">--</b><span>minutes</span></div>
+            <div><b id="cdSeconds">--</b><span>seconds</span></div>
+          </div>
+          <div class="blocked-until" id="blockedUntil">{{ until }}</div>
+        </div>
+        <div class="blocked-done" id="blockedDone" hidden>
+          <div class="blocked-reason-text">Your block has ended.</div>
+          <a class="submit-button blocked-back" href="/">Back to the site</a>
+        </div>
+        {% else %}
+        <div class="blocked-timer">
+          <div class="blocked-label">Duration</div>
+          <div class="blocked-reason-text">This block is permanent.</div>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ asset('blocked.js') }}" defer></script>
+</body>
+</html>
