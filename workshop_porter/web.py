@@ -116,6 +116,19 @@ def create_app(
         )
     app.config.update(MAX_CONTENT_LENGTH=32 * 1024, JSON_SORT_KEYS=False)
     app.extensions["workshop_config"] = config
+
+    @app.context_processor
+    def static_versions():
+        def asset(filename: str) -> str:
+            # The file's change time in the URL makes browsers fetch new
+            # CSS and JS after an update instead of using a stale copy.
+            try:
+                version = int((Path(app.static_folder) / filename).stat().st_mtime)
+            except OSError:
+                version = 0
+            return url_for("static", filename=filename, v=version)
+        return {"asset": asset}
+
     app.extensions["workshop_database"] = database
     app.extensions["workshop_accounts"] = pool
     worker = QueueWorker(config, database, pool)

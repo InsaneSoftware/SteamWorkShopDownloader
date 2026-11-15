@@ -212,10 +212,12 @@ function formatTime(value) {
 
 // ----- Views (menu bar) ------------------------------------------------
 
-const VIEWS = ["accounts", "activity", "blocks"];
+const VIEWS = ["accounts", "ips", "agents", "log", "blocks"];
+const ACTIVITY_VIEWS = ["ips", "agents", "log"];
 
 function currentView() {
-  const requested = window.location.hash.slice(1);
+  let requested = window.location.hash.slice(1);
+  if (requested === "activity") requested = "ips";
   return VIEWS.includes(requested) ? requested : "accounts";
 }
 
@@ -232,7 +234,7 @@ function showView() {
 
 function refreshCurrent() {
   const view = currentView();
-  if (view === "activity") loadActivity();
+  if (ACTIVITY_VIEWS.includes(view)) loadActivity();
   if (view === "blocks") loadBlocks();
   if (view === "accounts") load();
 }
@@ -252,11 +254,11 @@ const ACTION_LABELS = {
   blocked: "Blocked visit",
 };
 
-document.querySelectorAll("#windowTabs button").forEach((button) => {
+document.querySelectorAll(".window-tabs button").forEach((button) => {
   button.addEventListener("click", () => {
     activityHours = Number(button.dataset.hours);
-    document.querySelectorAll("#windowTabs button").forEach((b) =>
-      b.classList.toggle("active", b === button));
+    document.querySelectorAll(".window-tabs button").forEach((b) =>
+      b.classList.toggle("active", Number(b.dataset.hours) === activityHours));
     loadActivity();
   });
 });
@@ -310,7 +312,7 @@ function renderIpRows(ips) {
   ips.forEach((row) => {
     const tr = el("tr", row.blocked ? "status-disabled" : "");
     const ipCell = el("td");
-    ipCell.append(ipButton(row.ip, "Show only this IP in the log", () => setIpFilter(row.ip)));
+    ipCell.append(ipButton(row.ip, "Show this IP in the log", () => setIpFilter(row.ip)));
     if (row.blocked) {
       ipCell.append(el("div", "reason", `blocked ${untilText(row.blocked.expires_at)}`));
     }
@@ -397,8 +399,8 @@ function uaButton(ua) {
 
 function setUaFilter(ua) {
   uaFilter = ua;
-  loadActivity();
-  document.querySelector("#logRows").scrollIntoView({ block: "start", behavior: "smooth" });
+  if (currentView() === "log") loadActivity();
+  else window.location.hash = "#log";
 }
 
 function renderUaRows(rows) {
@@ -499,8 +501,8 @@ function setIpFilter(ip) {
   const input = document.querySelector("#ipFilter");
   input.value = ip;
   ipFilter = ip;
-  loadActivity();
-  input.scrollIntoView({ block: "center", behavior: "smooth" });
+  if (currentView() === "log") loadActivity();
+  else window.location.hash = "#log";
 }
 
 // ----- Blocks ----------------------------------------------------------
@@ -588,7 +590,6 @@ function renderBlocks(blocks, uaBlocks = []) {
     const tr = el("tr");
     const ipCell = el("td");
     ipCell.append(ipButton(block.network, "Show this IP's activity", () => {
-      window.location.hash = "#activity";
       setIpFilter(block.network.split("/")[0]);
     }));
     tr.append(ipCell);
