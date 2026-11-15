@@ -37,20 +37,37 @@ WORKSHOP_ID_RE = re.compile(r"^\d{5,20}$")
 ALLOWED_HOSTS = {"steamcommunity.com", "www.steamcommunity.com"}
 
 
+class DuplicateDownloadError(RuntimeError):
+    """The same IP is already downloading this file."""
+
+
 class DownloadLimiter:
     """Limit simultaneous direct file transfers by client IP address."""
 
     def __init__(self, per_ip_limit: int):
         self.per_ip_limit = per_ip_limit
         self._active_by_ip: dict[str, int] = {}
+        self._active_files: set[tuple[str, str]] = set()
         self._lock = threading.Lock()
 
-    def acquire(self, client_ip: str) -> Callable[[], None] | None:
+    def acquire(
+        self, client_ip: str, file_key: str | None = None,
+    ) -> Callable[[], None] | None:
+        """Start a transfer. None when the IP has too many running.
+
+        With ``file_key`` the same file can only run once per IP at a time.
+        A second copy raises DuplicateDownloadError.
+        """
+        file_slot = (client_ip, file_key) if file_key else None
         with self._lock:
+            if file_slot and file_slot in self._active_files:
+                raise DuplicateDownloadError()
             active_for_ip = self._active_by_ip.get(client_ip, 0)
             if active_for_ip >= self.per_ip_limit:
                 return None
             self._active_by_ip[client_ip] = active_for_ip + 1
+            if file_slot:
+                self._active_files.add(file_slot)
 
         released = False
 
@@ -60,6 +77,8 @@ class DownloadLimiter:
                 if released:
                     return
                 released = True
+                if file_slot:
+                    self._active_files.discard(file_slot)
                 active = self._active_by_ip.get(client_ip, 0)
                 if active <= 1:
                     self._active_by_ip.pop(client_ip, None)
@@ -634,7 +653,22 @@ def create_app(
             database.record_download(visitor_ip, job["id"])
             log_activity("download", "ok", label, job.get("archive_bytes"))
 
+        def already_downloading():
+            # 204 makes the browser ignore the click and stay on the page.
+            if ip_guard.should_log(visitor_ip, f"download_duplicate:{job['id']}", 60):
+                log_activity("download", "duplicate", label)
+            response = app.response_class(status=204)
+            response.headers["X-Download-Note"] = "This file is already downloading"
+            return response
+
         if config.x_accel_redirect_prefix:
+            # Nginx sends the file, so the app cannot see when it ends. A
+            # second full download of the same file within a minute is
+            # treated as a double click.
+            if first_part and not ip_guard.should_log(
+                visitor_ip, f"x_accel:{job['id']}", 60
+            ):
+                return already_downloading()
             response = app.response_class(status=200, mimetype="application/zip")
             response.headers["X-Accel-Redirect"] = (
                 f"{config.x_accel_redirect_prefix}/"
@@ -644,7 +678,14 @@ def create_app(
                 "attachment", {"filename": job["archive_name"]}
             )
         else:
-            release_download = download_limiter.acquire(visitor_ip)
+            # Download managers fetch one file in several ranged parts at
+            # once. Only full downloads from the start are kept to one copy.
+            try:
+                release_download = download_limiter.acquire(
+                    visitor_ip, job["id"] if first_part else None
+                )
+            except DuplicateDownloadError:
+                return already_downloading()
             if release_download is None:
                 if ip_guard.should_log(visitor_ip, "download_busy", 30):
                     log_activity("download", "busy", label)

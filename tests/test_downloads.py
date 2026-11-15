@@ -7,7 +7,7 @@ from pathlib import Path
 
 from workshop_porter.config import Config, Game
 from workshop_porter.database import utc_now
-from workshop_porter.web import DownloadLimiter, create_app
+from workshop_porter.web import DownloadLimiter, DuplicateDownloadError, create_app
 
 
 def make_config(root: Path, **changes) -> Config:
@@ -74,6 +74,25 @@ class DownloadLimiterTests(unittest.TestCase):
         first()
         first()
         self.assertIsNotNone(limiter.acquire("192.0.2.10"))
+
+    def test_same_file_runs_once_per_ip(self) -> None:
+        limiter = DownloadLimiter(3)
+        first = limiter.acquire("192.0.2.10", "job-1")
+        with self.assertRaises(DuplicateDownloadError):
+            limiter.acquire("192.0.2.10", "job-1")
+        # Ranged parts, another file and another IP are fine.
+        self.assertIsNotNone(limiter.acquire("192.0.2.10"))
+        self.assertIsNotNone(limiter.acquire("192.0.2.10", "job-2"))
+        self.assertIsNotNone(limiter.acquire("192.0.2.11", "job-1"))
+        first()
+        limiter.acquire("192.0.2.11")  # frees nothing, just another IP
+        release = limiter.acquire("192.0.2.12", "job-1")
+        self.assertIsNotNone(release)
+        # After the first copy finished the same IP can download it again.
+        first_again = DownloadLimiter(3)
+        done = first_again.acquire("192.0.2.10", "job-1")
+        done()
+        self.assertIsNotNone(first_again.acquire("192.0.2.10", "job-1"))
 
 
 class DownloadRouteTests(unittest.TestCase):

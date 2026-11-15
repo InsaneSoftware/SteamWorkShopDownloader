@@ -136,6 +136,9 @@ function offlineText(error) {
   return error.message.includes("token") ? "Token rejected" : "Offline";
 }
 
+const recentDownloads = new Map();
+const DOWNLOAD_CLICK_MS = 8000;
+
 function renderJobs(jobs, canDelete) {
   jobList.replaceChildren();
   emptyState.hidden = jobs.length > 0;
@@ -177,6 +180,20 @@ function renderJobs(jobs, canDelete) {
     deleteButton.hidden = !canDelete;
     if (ready) {
       downloadButton.href = job.download_url;
+      // The queue redraws every few seconds, so remember recent clicks.
+      if (Date.now() - (recentDownloads.get(job.id) || 0) < DOWNLOAD_CLICK_MS) {
+        downloadButton.classList.add("disabled");
+        downloadButton.textContent = "Downloading…";
+      }
+      downloadButton.addEventListener("click", (event) => {
+        if (Date.now() - (recentDownloads.get(job.id) || 0) < DOWNLOAD_CLICK_MS) {
+          event.preventDefault();
+          return;
+        }
+        recentDownloads.set(job.id, Date.now());
+        downloadButton.classList.add("disabled");
+        downloadButton.textContent = "Downloading…";
+      });
       copyButton.addEventListener("click", async () => {
         await navigator.clipboard.writeText(job.download_url);
         copyButton.textContent = "COPIED";
