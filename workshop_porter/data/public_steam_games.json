@@ -1,0 +1,1645 @@
+{
+ "description": "Games whose Workshop items download with SteamCMD's anonymous login, from a scan of the 1000 highest-ranked Workshop games. full: every item tried worked. partial: some items worked.",
+ "games": [
+  {
+   "app_id": 730,
+   "name": "Counter-Strike 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 570,
+   "name": "Dota 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 252490,
+   "name": "Rust",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1669000,
+   "name": "Age of Wonders 4",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 440,
+   "name": "Team Fortress 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 108600,
+   "name": "Project Zomboid",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 294100,
+   "name": "RimWorld",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 281990,
+   "name": "Stellaris",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 311210,
+   "name": "Call of Duty®: Black Ops III",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 440900,
+   "name": "Conan Exiles Enhanced",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 714010,
+   "name": "Aimlabs",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 784080,
+   "name": "MechWarrior 5: Mercenaries",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 105600,
+   "name": "Terraria",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 286160,
+   "name": "Tabletop Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1942280,
+   "name": "Brotato",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1324780,
+   "name": "Easy Red 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 550,
+   "name": "Left 4 Dead 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 4000,
+   "name": "Garry's Mod",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 392160,
+   "name": "X4: Foundations",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 322330,
+   "name": "Don't Starve Together",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 346110,
+   "name": "ARK: Survival Evolved",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 393380,
+   "name": "Squad",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 435150,
+   "name": "Divinity: Original Sin 2 - Definitive Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1062090,
+   "name": "Timberborn",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 371970,
+   "name": "Barony",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 244850,
+   "name": "Space Engineers",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2168680,
+   "name": "Nuclear Option",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1133870,
+   "name": "Space Engineers 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 620,
+   "name": "Portal 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 364360,
+   "name": "Total War: WARHAMMER",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3808690,
+   "name": "Pathogenic",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 602960,
+   "name": "Barotrauma",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1162750,
+   "name": "Songs of Syx",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 975370,
+   "name": "Dwarf Fortress",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 573090,
+   "name": "Stormworks: Build and Rescue",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3499520,
+   "name": "Piano Glow",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 231430,
+   "name": "Company of Heroes 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 646570,
+   "name": "Slay the Spire",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 314650,
+   "name": "SpaceEngine",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 233860,
+   "name": "Kenshi",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 16900,
+   "name": "GROUND BRANCH",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 881100,
+   "name": "Noita",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2059170,
+   "name": "Quasimorph",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1682970,
+   "name": "Uncrashed : FPV Drone Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2646460,
+   "name": "Soulmask",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 784150,
+   "name": "Workers & Resources: Soviet Republic",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 333640,
+   "name": "Caves of Qud",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2878450,
+   "name": "Master of Command",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 219740,
+   "name": "Don't Starve",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1239080,
+   "name": "Door Kickers 2: Task Force North",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1066780,
+   "name": "Transport Fever 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1465460,
+   "name": "Infection Free Zone",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1118200,
+   "name": "People Playground",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 313120,
+   "name": "Stranded Deep",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 489630,
+   "name": "Warhammer 40,000: Gladius - Relics of War",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1029780,
+   "name": "Going Medieval",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1836730,
+   "name": "Echo Point Nova",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 65800,
+   "name": "Dungeon Defenders",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 494840,
+   "name": "UBOAT",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 635260,
+   "name": "CarX Drift Racing Online",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1176470,
+   "name": "Terra Invicta",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1454400,
+   "name": "Cookie Clicker",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 418030,
+   "name": "Subsistence",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 589290,
+   "name": "Holdfast: Nations At War",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 228200,
+   "name": "Company of Heroes",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 445220,
+   "name": "Avorion",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 552100,
+   "name": "Brick Rigs",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 288470,
+   "name": "Fable Anniversary",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2489330,
+   "name": "Whiskerwood",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 979110,
+   "name": "Space Haven",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1169040,
+   "name": "Necesse",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3097300,
+   "name": "Creature Kitchen",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 341800,
+   "name": "Keep Talking and Nobody Explodes",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1106840,
+   "name": "Hydroneer",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 362890,
+   "name": "Black Mesa",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 636480,
+   "name": "Ravenfield",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 997010,
+   "name": "Police Simulator: Patrol Officers",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1049410,
+   "name": "Superliminal",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1227690,
+   "name": "Severed Steel",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 644930,
+   "name": "They Are Billions",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 569480,
+   "name": "Kingdoms and Castles",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 780290,
+   "name": "Gloomhaven",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 763890,
+   "name": "Wildermyth",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 558990,
+   "name": "Opus Magnum",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 327030,
+   "name": "Worms W.M.D",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 228380,
+   "name": "Wreckfest",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 512900,
+   "name": "Streets of Rogue",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 238460,
+   "name": "BattleBlock Theater®",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 4241920,
+   "name": "BRAZILIAN DRUG DEALER BEFORE 4: DEMONS FROM THE PORTAL TO HELL I OPENED ARE STILL IN THE FAVELA AND NOW I HAVE TO SAVE MAMADAS FROM RONALDO",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 265930,
+   "name": "Goat Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 544550,
+   "name": "Stationeers",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1948280,
+   "name": "Stacklands",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 223470,
+   "name": "POSTAL 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1213210,
+   "name": "Command & Conquer™ Remastered Collection",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 621060,
+   "name": "PC Building Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 887570,
+   "name": "NEBULOUS: Fleet Command",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 453090,
+   "name": "Parkitect",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 211820,
+   "name": "Starbound",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1618380,
+   "name": "Spellmasons",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 239820,
+   "name": "Game Dev Tycoon",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 979640,
+   "name": "Cepheus Protocol",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 257510,
+   "name": "The Talos Principle",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 268650,
+   "name": "From the Depths",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 394690,
+   "name": "Tower Unite",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2647680,
+   "name": "ICBM: Escalation",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1328350,
+   "name": "Turbo Overkill",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 200710,
+   "name": "Torchlight II",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1560250,
+   "name": "Rising Front",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3191050,
+   "name": "BRAZILIAN DRUG DEALER 3: I OPENED A PORTAL TO HELL IN THE FAVELA TRYING TO REVIVE MIT AIA I NEED TO CLOSE IT",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 519860,
+   "name": "DUSK",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1411910,
+   "name": "Fallen Aces",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 342560,
+   "name": "Airships: Conquer the Skies",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 247080,
+   "name": "Crypt of the NecroDancer",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 287980,
+   "name": "Mini Metro",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 24810,
+   "name": "Command & Conquer™ 3: Kane’s Wrath",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1614550,
+   "name": "Astro Colony",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 207140,
+   "name": "SpeedRunners",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 24790,
+   "name": "Command & Conquer 3 Tiberium Wars™",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 17480,
+   "name": "Command & Conquer™ Red Alert™ 3",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 230190,
+   "name": "War for the Overworld",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 298630,
+   "name": "The Escapists",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1250,
+   "name": "Killing Floor",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 282800,
+   "name": "100% Orange Juice",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 4610100,
+   "name": "Sinner Maker",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 25000,
+   "name": "Overgrowth",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2732960,
+   "name": "Command & Conquer™ Generals Zero Hour",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2229890,
+   "name": "Command & Conquer Renegade™",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 321360,
+   "name": "Primal Carnage: Extinction",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 24800,
+   "name": "Command & Conquer: Red Alert 3 - Uprising",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 434050,
+   "name": "Duke Nukem 3D: 20th Anniversary World Tour",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 65980,
+   "name": "Sid Meier's Civilization®: Beyond Earth™",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1521580,
+   "name": "Perfect Heist 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 365960,
+   "name": "rFactor 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2200780,
+   "name": "My Dream Setup",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1371580,
+   "name": "Myth of Empires",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 647960,
+   "name": "Rusted Warfare - RTS",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 362620,
+   "name": "Software Inc.",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 600480,
+   "name": "Megaquarium",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1188930,
+   "name": "Chrono Ark",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 718670,
+   "name": "Cultist Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 754150,
+   "name": "Rolling Line",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1972440,
+   "name": "Shotgun King: The Final Checkmate",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 218680,
+   "name": "Scribblenauts Unlimited",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 864060,
+   "name": "Marble It Up! Ultra",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1022980,
+   "name": "Ostranauts",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1483870,
+   "name": "Draw & Guess",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 304930,
+   "name": "Unturned",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1330460,
+   "name": "Becastled",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1094520,
+   "name": "Sands of Salzaar",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 40980,
+   "name": "Stronghold Legends: Steam Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2963880,
+   "name": "Murky Divers",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1948980,
+   "name": "Hero's Adventure: Road to Passion",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 440310,
+   "name": "Afterbeat (Project Arrhythmia)",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 201790,
+   "name": "Orcs Must Die! 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 251730,
+   "name": "Legend of Grimrock 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 473770,
+   "name": "BallisticNG",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 456670,
+   "name": "Hand of Fate 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 224480,
+   "name": "Octodad: Dadliest Catch",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 603850,
+   "name": "Age of History II",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1970580,
+   "name": "Backpack Hero",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 266840,
+   "name": "Age of Mythology: Extended Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 234650,
+   "name": "Shadowrun Returns",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1094780,
+   "name": "Fisher Online",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 5024540,
+   "name": "LIMP MODE",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 282440,
+   "name": "Quake Live",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 503560,
+   "name": "911 Operator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 346940,
+   "name": "Shadowrun: Hong Kong - Extended Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3992260,
+   "name": "Ascend From Nine Mountains",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 606800,
+   "name": "Startup Company",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3531260,
+   "name": "Superhero Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 726840,
+   "name": "City Game Studio: Your Game Dev Adventure Begins",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 427100,
+   "name": "Fernbus Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 711980,
+   "name": "Starship EVO",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 365450,
+   "name": "Hacknet",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 35450,
+   "name": "Red Orchestra 2: Heroes of Stalingrad with Rising Storm",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 446800,
+   "name": "Transport Fever",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 464350,
+   "name": "Screeps: World",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1157700,
+   "name": "Pro Wrestling Sim",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3142400,
+   "name": "Scourge Of War - Gettysburg",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3874950,
+   "name": "Bit Buddy",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1012110,
+   "name": "Military Conflict: Vietnam",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 257420,
+   "name": "Serious Sam 4",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3597510,
+   "name": "MyRobot",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1539140,
+   "name": "STONKS-9800: Stock Market Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 232890,
+   "name": "Stronghold Crusader 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1196080,
+   "name": "Space Simulation Toolkit",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 35720,
+   "name": "Trine 2: Complete Story",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1750770,
+   "name": "Starcom: Unknown Space",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1739300,
+   "name": "Smack Studio",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 960690,
+   "name": "One Step From Eden",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 541300,
+   "name": "Survive the Nights",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1240630,
+   "name": "Hex of Steel",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 716490,
+   "name": "EXAPUNKS",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1094600,
+   "name": "Kingdom of Night",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2712380,
+   "name": "Legends of Dragaea: Idle Dungeons",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 300550,
+   "name": "Shadowrun: Dragonfall - Director's Cut",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 35700,
+   "name": "Trine Enchanted Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2990,
+   "name": "FlatOut 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 718850,
+   "name": "Age of Wonders: Planetfall",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 736220,
+   "name": "Squad 44",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1444650,
+   "name": "Haydee 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 113020,
+   "name": "Monaco: What's Yours Is Mine",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1730260,
+   "name": "Retro Gadgets",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 40960,
+   "name": "Stronghold 2: Steam Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 311260,
+   "name": "The Guild 3",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1024950,
+   "name": "Starship Horizons: Bridge Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 104900,
+   "name": "ORION: Prelude",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1111930,
+   "name": "Underspace",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 329970,
+   "name": "KeeperRL",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 803050,
+   "name": "Per Aspera",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3400000,
+   "name": "Cubic Odyssey",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1956800,
+   "name": "Thriving City: Song",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 248610,
+   "name": "Door Kickers",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2994020,
+   "name": "Puck",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1486630,
+   "name": "Intravenous",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 382560,
+   "name": "Hot Lava",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 263760,
+   "name": "Turbo Dismount™",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2726450,
+   "name": "Windowkill",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1653970,
+   "name": "Jigsaw Puzzle Dreams",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 951440,
+   "name": "Volcanoids",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 41070,
+   "name": "Serious Sam 3: BFE",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 653930,
+   "name": "Tiny Town VR",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 242110,
+   "name": "Joe Danger 2: The Movie",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 300570,
+   "name": "Infinifactory",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 12360,
+   "name": "FlatOut: Ultimate Carnage Collector's Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 4920,
+   "name": "Natural Selection 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 381020,
+   "name": "Sky Rogue",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 241240,
+   "name": "Contraption Maker",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1440670,
+   "name": "Zeepkist",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1183470,
+   "name": "Imperiums: Greek Wars",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 853770,
+   "name": "Maximum Action",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1651490,
+   "name": "Tiny Life",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 324680,
+   "name": "Impossible Creatures Steam Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 686200,
+   "name": "Door Kickers: Action Squad",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1797680,
+   "name": "Wee Tanks!",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 226840,
+   "name": "Age of Wonders III",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 602700,
+   "name": "Chippy",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2263360,
+   "name": "HYPERBEAT",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 235800,
+   "name": "Audiosurf 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 275390,
+   "name": "Guacamelee! Super Turbo Championship Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 214770,
+   "name": "Guacamelee! Gold Edition",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1154040,
+   "name": "SpellForce 3 Fallen God",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1157220,
+   "name": "Nebuchadnezzar",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 249870,
+   "name": "Scribblenauts Unmasked: A DC Comics Adventure",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 598330,
+   "name": "SimAirport",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 229890,
+   "name": "Joe Danger",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 530890,
+   "name": "Haydee",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 667530,
+   "name": "Drunken Wrestlers 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2108180,
+   "name": "Swordhaven: Iron Conspiracy",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 665370,
+   "name": "Mutilate-a-Doll 2",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3059010,
+   "name": "Commando Collection",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 811320,
+   "name": "Jupiter Hell",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 979120,
+   "name": "Autonauts",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3664820,
+   "name": "Sandboxels",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 207170,
+   "name": "Legend of Grimrock",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 329130,
+   "name": "Reassembly",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 834910,
+   "name": "ATLAS",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2024070,
+   "name": "Party Quiz",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 222880,
+   "name": "Insurgency",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 416680,
+   "name": "Zombie Night Terror",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 628770,
+   "name": "Tangledeep",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 98800,
+   "name": "Dungeons of Dredmor",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 233610,
+   "name": "Distance",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 285110,
+   "name": "GearCity",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 301650,
+   "name": "Battlezone 98 Redux",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1130410,
+   "name": "Cyber Hook",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 257170,
+   "name": "Rebuild 3: Gangs of Deadsville",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 736590,
+   "name": "Operation: Harsh Doorstop",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1150090,
+   "name": "Learning Factory",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 209670,
+   "name": "Cortex Command",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2276830,
+   "name": "Kingsvein",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 219640,
+   "name": "Chivalry: Medieval Warfare",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 591370,
+   "name": "Production Line : Car factory simulation",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 274900,
+   "name": "Murder Miners",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1178220,
+   "name": "ICBM",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2440380,
+   "name": "Megaloot",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1224290,
+   "name": "Horizon's Gate",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1577620,
+   "name": "The Signal State",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2870,
+   "name": "X Rebirth",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 383840,
+   "name": "Nimbatus - The Space Drone Constructor",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 576770,
+   "name": "Low Magic Age",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 541200,
+   "name": "GTTOD",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 245470,
+   "name": "Democracy 3",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1158470,
+   "name": "Voxelgram",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1042380,
+   "name": "Hundred Days - Winemaking Simulator",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 405710,
+   "name": "Staxel",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 3831080,
+   "name": "Oeuf",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 5074470,
+   "name": "Stellar Embers: United Fleet",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 240440,
+   "name": "Quadrilateral Cowboy",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 253030,
+   "name": "Race The Sun",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 257750,
+   "name": "Bloody Trapland",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 765410,
+   "name": "Bean Battles",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 457210,
+   "name": "SEUM: Speedrunners from Hell",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 747200,
+   "name": "Keplerth",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 6220,
+   "name": "FlatOut",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 238430,
+   "name": "Contagion",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 2538000,
+   "name": "Dojo Masters",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 319910,
+   "name": "Trine 3: The Artifacts of Power",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 1990050,
+   "name": "Creature Crafter",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 379210,
+   "name": "Wayward",
+   "anonymous": "full"
+  },
+  {
+   "app_id": 246620,
+   "name": "Plague Inc: Evolved",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 2873660,
+   "name": "Global Rescue",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 704450,
+   "name": "Neverwinter Nights: Enhanced Edition",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1270580,
+   "name": "Mind Over Magic",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1357210,
+   "name": "Galactic Civilizations IV",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 320240,
+   "name": "We Happy Few",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 992300,
+   "name": "嗜血印 Bloody Spell",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 2738630,
+   "name": "Dungeons & Dragons Neverwinter Nights 2: Enhanced Edition",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1059990,
+   "name": "Trombone Champ",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1054510,
+   "name": "Survivalist: Invisible Strain",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 2308630,
+   "name": "Dawnfolk",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 2714620,
+   "name": "Duck Detective: The Ghost of Glamping",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 753420,
+   "name": "Dungreed",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 400910,
+   "name": "Rabi-Ribi",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 3204120,
+   "name": "Maestro's Cold War 2",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1772830,
+   "name": "Rusted Moss",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 591460,
+   "name": "Parkasaurus",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 2824660,
+   "name": "Old School Rally",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1043340,
+   "name": "No Time",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 323220,
+   "name": "Vagante",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1269690,
+   "name": "Attack on Toys",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 227780,
+   "name": "Serious Sam Classics: Revolution",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 602320,
+   "name": "Train Valley 2",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 952860,
+   "name": "河洛群俠傳 (Ho Tu Lo Shu ： The Books of Dragon)",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 375530,
+   "name": "Football, Tactics & Glory",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 521150,
+   "name": "Another Brick in The Mall",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1290750,
+   "name": "Crawl Tactics",
+   "anonymous": "partial"
+  },
+  {
+   "app_id": 1981570,
+   "name": "Land of the Vikings",
+   "anonymous": "partial"
+  }
+ ]
+}

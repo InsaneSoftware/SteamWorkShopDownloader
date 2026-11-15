@@ -57,6 +57,7 @@ class Config:
     max_pending_accounts: int = 25
     steamcmd_timeout_seconds: int = 120
     max_store_lookups_per_check: int = 60
+    public_steam_account: bool = True
 
     @classmethod
     def from_file(cls, path: str | Path | None = None) -> "Config":
@@ -299,4 +300,5 @@ class Config:
             max_store_lookups_per_check=max(
                 1, int(pool.get("max_store_lookups_per_check", 60))
             ),
+            public_steam_account=bool(pool.get("public_steam_account", True)),
         )

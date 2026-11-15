@@ -24,7 +24,9 @@ from .database import (
 )
 from .catalog import fetch_app_name
 from .metadata import fetch_workshop_details
-from .security import IpGuard, expiry_from_hours, normalize_ip, parse_block_target
+from .security import (
+    IpGuard, expiry_from_hours, normalize_ip, parse_block_target, parse_ua_block,
+)
 from .steamcmd import SteamCmd
 from .vault import CredentialVault
 from .worker import QueueWorker
@@ -103,6 +105,7 @@ def create_app(
     pool_options = {"opener": steam_api_opener} if steam_api_opener else {}
     pool = AccountPool(config, database, vault, steamcmd, **pool_options)
     pool.import_config_accounts()
+    pool.ensure_public_account()
 
     app = Flask(__name__)
     if config.trusted_proxy_hops:
@@ -129,9 +132,14 @@ def create_app(
         # [server].trusted_proxy_hops is set (ProxyFix above).
         return normalize_ip(request.remote_addr)
 
+    def client_user_agent() -> str:
+        return request.headers.get("User-Agent", "").strip()[:400]
+
     def log_activity(action: str, status: str, detail: str = "", bytes_: int | None = None):
         try:
-            database.log_activity(client_ip(), action, status, detail, bytes_)
+            database.log_activity(
+                client_ip(), action, status, detail, bytes_, client_user_agent()
+            )
         except Exception:
             app.logger.exception("Could not write the activity log")
 
@@ -142,6 +150,10 @@ def create_app(
             ip_guard.prune()
         ip = client_ip()
         block = ip_guard.block_for(ip)
+        what = "IP address"
+        if not block:
+            block = ip_guard.ua_block_for(client_user_agent())
+            what = "browser"
         if not block or has_admin_access():
             return None
         # Let the admin log in from a blocked address, and keep the page styled.
@@ -155,7 +167,7 @@ def create_app(
             "permanently" if block["expires_at"] is None
             else "until " + block["expires_at"][:16].replace("T", " ") + " UTC"
         )
-        message = f"Your IP address is blocked {until}."
+        message = f"Your {what} is blocked {until}."
         if request.path.startswith("/api/") or request.path.startswith("/download/"):
             return jsonify(error=message), 403
         return app.response_class(message, status=403, mimetype="text/plain")
@@ -224,6 +236,7 @@ def create_app(
         visible = account.get("library_visible")
         result.update(
             username=username,
+            kind=account.get("kind") or "shared",
             steam_id=account.get("steam_id"),
             library_visible=None if visible is None else bool(visible),
             enabled=account["enabled"],
@@ -720,6 +733,48 @@ def create_app(
             "expires_at": block["expires_at"],
         }
 
+    def serialize_ua_block(block: dict) -> dict:
+        return {
+            "pattern": block["pattern"],
+            "match": block["match"],
+            "reason": block["reason"],
+            "created_at": block["created_at"],
+            "expires_at": block["expires_at"],
+        }
+
+    @app.post("/api/admin/ua-blocks")
+    def admin_add_ua_block():
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        payload = request.get_json(silent=True) or {}
+        try:
+            pattern, match = parse_ua_block(
+                str(payload.get("pattern", "")), str(payload.get("match", "contains"))
+            )
+            hours = payload.get("hours")
+            expires_at = expiry_from_hours(float(hours) if hours else None)
+        except (TypeError, ValueError) as exc:
+            return jsonify(error=str(exc)), 400
+        database.add_ua_block(pattern, match, str(payload.get("reason", "")).strip(), expires_at)
+        ip_guard.invalidate()
+        app.logger.info("Admin blocked user agent %s %r until %s",
+                        match, pattern, expires_at or "forever")
+        return jsonify(ok=True, pattern=pattern, match=match, expires_at=expires_at)
+
+    @app.post("/api/admin/ua-blocks/remove")
+    def admin_remove_ua_block():
+        auth_error = require_admin_session()
+        if auth_error:
+            return auth_error
+        payload = request.get_json(silent=True) or {}
+        if not database.remove_ua_block(
+            str(payload.get("pattern", "")), str(payload.get("match", ""))
+        ):
+            return jsonify(error="Block not found"), 404
+        ip_guard.invalidate()
+        return jsonify(ok=True)
+
     @app.get("/api/admin/activity")
     def admin_activity():
         auth_error = require_admin_session()
@@ -731,14 +786,21 @@ def create_app(
             hours = 24
         since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
         ip_filter = request.args.get("ip", "").strip() or None
+        ua_filter = request.args.get("ua")
         ips = database.activity_by_ip(since)
         for row in ips:
             block = ip_guard.block_for(row["ip"])
             row["blocked"] = serialize_block(block) if block else None
+        user_agents = database.activity_by_user_agent(since)
+        for row in user_agents:
+            block = ip_guard.ua_block_for(row["user_agent"])
+            row["blocked"] = serialize_ua_block(block) if block else None
         return jsonify(
             hours=hours,
             ips=ips,
-            events=database.recent_activity(since, ip_filter),
+            user_agents=user_agents,
+            events=database.recent_activity(since, ip_filter, user_agent=ua_filter),
+            your_user_agent=client_user_agent(),
             your_ip=client_ip(),
             proxy_configured=bool(config.trusted_proxy_hops),
         )
@@ -748,7 +810,10 @@ def create_app(
         auth_error = require_admin_session()
         if auth_error:
             return auth_error
-        return jsonify(blocks=[serialize_block(b) for b in database.active_blocks()])
+        return jsonify(
+            blocks=[serialize_block(b) for b in database.active_blocks()],
+            ua_blocks=[serialize_ua_block(b) for b in database.active_ua_blocks()],
+        )
 
     @app.post("/api/admin/blocks")
     def admin_add_block():

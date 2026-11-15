@@ -247,6 +247,17 @@ A Steam Guard code is used once and then discarded. Accounts protected by
 mobile-app approval usually cannot be used: SteamCMD has to be stopped after
 `login_timeout_seconds`, and the account is flagged broken.
 
+### Public Steam account
+
+A built-in account called **Public Steam** uses SteamCMD's `anonymous` login.
+It offers the games listed in `workshop_porter/data/public_steam_games.json`:
+328 games from a scan of the 1000 highest-ranked Workshop games whose items
+download anonymously (300 fully, 28 partly). For the partial games, real
+accounts are tried first. Its check only confirms that the anonymous login
+works, since that login has no library of its own. It can be renamed, disabled
+or deleted in `/admin`, and a deleted Public Steam account is not created
+again. Set `public_steam_account = false` under `[accounts]` to never create it.
+
 ### Admin dashboard
 
 After entering admin mode with `/?admin=YOUR_ADMIN_PASSWORD`, open `/admin`.
@@ -256,13 +267,16 @@ owned games, and its last, next and most recent use times. It also shows how
 many working accounts cover each game. Accounts can be re-checked immediately,
 disabled, enabled again or deleted.
 
-### Activity log and IP blocks
+### Activity log, IP blocks and user agent blocks
 
 The **Activity** tab in `/admin` lists every visitor IP for the last 24 hours,
 7 days or 30 days. For each IP it shows requested items, rejected requests,
-downloads, data downloaded, shared accounts and wrong site passwords. The log
-below it shows each event and can be filtered by IP (click an IP to filter).
-Entries are kept for 90 days.
+downloads, data downloaded, shared accounts, wrong site passwords and how many
+different browsers (user agents) it used. A second table groups the same
+activity by user agent and shows from how many IPs each one came. One user
+agent from many IPs usually means someone rotating proxies. The log below
+shows each event with its browser and can be filtered by IP or user agent
+(click one to filter). Entries are kept for 90 days.
 
 Repeated wrong-password and blocked hits from the same IP are logged at most
 once a minute (blocked hits once every 5 minutes), so a stale password in a
@@ -272,6 +286,12 @@ The **Blocked IPs** tab blocks an IP or a range such as `203.0.113.0/24`, for
 1 hour up to permanently, with an optional reason. Blocked visitors get a
 `403` with the time the block ends. An admin is never blocked while logged in.
 Local and private addresses cannot be blocked.
+
+The same tab blocks user agents, either an exact user agent (an empty one
+blocks requests without a User-Agent header) or any user agent containing a
+piece of text, such as `python-requests`. Parts that appear in almost every
+browser, like `Mozilla` or `Chrome`, are refused. User agents are easy to
+change, so combine these blocks with IP blocks.
 
 The IPs are only real when the app knows it sits behind a proxy. Behind
 CloudPanel, Nginx or another reverse proxy, set this, or every visitor shows up

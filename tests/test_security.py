@@ -124,6 +124,53 @@ class ActivityAndBlockTests(unittest.TestCase):
         blocks = admin.get("/api/admin/blocks").get_json()["blocks"]
         self.assertEqual([b["network"] for b in blocks], ["203.0.113.0/24"])
 
+    def test_user_agents_are_logged_and_blockable(self) -> None:
+        bot = "EvilScraper/2.1 (+proxy)"
+        visitor = self.client(BAD)
+        visitor.environ_base["HTTP_USER_AGENT"] = bot
+        visitor.get("/api/jobs", headers={"Authorization": "Bearer nope"})
+        other = self.client("198.51.100.77")
+        other.environ_base["HTTP_USER_AGENT"] = bot
+        other.get("/api/jobs", headers={"Authorization": "Bearer nope"})
+
+        admin = self.admin()
+        data = admin.get("/api/admin/activity").get_json()
+        row = next(r for r in data["user_agents"] if r["user_agent"] == bot)
+        self.assertEqual((row["ips"], row["bad_passwords"]), (2, 2))
+        events = admin.get("/api/admin/activity", query_string={"ua": bot}).get_json()["events"]
+        self.assertEqual({e["ip"] for e in events}, {BAD, "198.51.100.77"})
+
+        url = "/api/admin/ua-blocks"
+        for pattern, match in (("Mozilla", "contains"), ("abc", "contains"), ("x", "regex")):
+            self.assertEqual(admin.post(url, headers=FETCH, json={
+                "pattern": pattern, "match": match}).status_code, 400, pattern)
+        response = admin.post(url, headers=FETCH, json={
+            "pattern": "evilscraper", "match": "contains", "hours": 1, "reason": "proxies"})
+        self.assertEqual(response.status_code, 200)
+
+        # Any IP with that browser is blocked. Others and the admin are not.
+        new_ip = self.client("192.0.2.123")
+        new_ip.environ_base["HTTP_USER_AGENT"] = bot
+        response = new_ip.get("/api/jobs", headers=TOKEN)
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("Your browser is blocked", response.get_json()["error"])
+        self.assertEqual(self.client("192.0.2.124").get("/api/jobs", headers=TOKEN).status_code, 200)
+        admin.environ_base["HTTP_USER_AGENT"] = bot
+        self.assertEqual(admin.get("/api/admin/blocks").status_code, 200)
+
+        blocks = admin.get("/api/admin/blocks").get_json()["ua_blocks"]
+        self.assertEqual([(b["pattern"], b["match"]) for b in blocks], [("evilscraper", "contains")])
+        self.assertEqual(admin.post(f"{url}/remove", headers=FETCH, json={
+            "pattern": "evilscraper", "match": "contains"}).status_code, 200)
+        self.assertEqual(new_ip.get("/api/jobs", headers=TOKEN).status_code, 200)
+
+        # An exact empty pattern blocks requests that send no User-Agent at all.
+        admin.post(url, headers=FETCH, json={"pattern": "", "match": "exact"})
+        no_agent = self.client("192.0.2.125")
+        no_agent.environ_base["HTTP_USER_AGENT"] = ""
+        self.assertEqual(no_agent.get("/").status_code, 403)
+        self.assertEqual(self.client("192.0.2.126").get("/").status_code, 200)
+
     def test_expired_block_is_ignored(self) -> None:
         self.database.add_block(BAD, "old", "2000-01-01T00:00:00+00:00")
         self.app.extensions["workshop_ip_guard"].invalidate()

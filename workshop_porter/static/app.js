@@ -293,7 +293,7 @@ function renderAccounts(accounts, interval) {
 
     const sub = el("div", "account-sub");
     if (account.status === "working") {
-      sub.textContent = account.games.map((g) => g.name).join(", ");
+      fillGameList(sub, account.games.map((g) => g.name));
     } else {
       sub.textContent = account.status_reason || "";
     }
@@ -426,3 +426,27 @@ function updateGuardWarning() {
 }
 
 guardInput.addEventListener("input", updateGuardWarning);
+
+// Long game lists (the built-in Public Steam account has hundreds) show the
+// first few names with a link to expand.
+function fillGameList(container, names, limit = 30) {
+  container.replaceChildren();
+  if (!names.length) {
+    container.textContent = "–";
+    return;
+  }
+  const shown = document.createElement("span");
+  shown.textContent = names.slice(0, limit).join(", ");
+  container.append(shown);
+  if (names.length > limit) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "link-button more-games";
+    more.textContent = ` +${names.length - limit} more`;
+    more.addEventListener("click", () => {
+      shown.textContent = names.join(", ");
+      more.remove();
+    });
+    container.append(more);
+  }
+}

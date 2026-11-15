@@ -30,6 +30,7 @@ def make_config(root: Path, **changes) -> Config:
         max_archive_gb=25,
         poll_seconds=1.0,
         games=(Game(app_id=107410, name="Arma 3"),),
+        public_steam_account=False,
     )
     return replace(config, **changes)
 

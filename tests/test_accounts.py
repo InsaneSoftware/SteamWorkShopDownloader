@@ -405,6 +405,43 @@ class AccountPoolTests(unittest.TestCase):
         response = client.post("/api/jobs", headers=TOKEN, json={"url": "333333333"})
         self.assertIn("Pick the game yourself", response.get_json()["error"])
 
+    def test_public_steam_account(self) -> None:
+        from workshop_porter.accounts import public_games
+
+        games = public_games()
+        self.assertEqual(len(games), 328)
+        partial = next(a for a, (_, is_partial) in games.items() if is_partial)
+
+        app, client, pool = self.make_app(public_steam_account=True)
+        database = app.extensions["workshop_database"]
+        public = next(a for a in database.list_accounts() if a["display_name"] == "Public Steam")
+        self.assertEqual(public["kind"], "public")
+        pool.check_due_account()
+        account, check_args = self.steam.calls[-1]
+        self.assertEqual(account.username, "anonymous")
+        self.assertEqual(check_args, [])            # no library scan
+        public = database.get_account(public["id"])
+        self.assertEqual(public["status"], "working")
+        self.assertEqual(len(public["owned_app_ids"]), 328)
+
+        # Its games are supported and named, and the login stays private.
+        names = {g["name"] for g in client.get("/api/games", headers=TOKEN).get_json()["games"]}
+        self.assertIn("RimWorld", names)
+        self.assertNotIn("anonymous", client.get("/api/accounts", headers=TOKEN).get_data(as_text=True))
+
+        # Partial games: real accounts first, Public Steam last.
+        self.steam.results["real_l"] = AccountCheck(True, [partial])
+        self.submit(client, "Real", "real_l")
+        self.drain(pool)
+        self.assertEqual([a["display_name"] for a in pool.accounts_for_app(partial)],
+                         ["Real", "Public Steam"])
+
+        # Nobody can share "anonymous" again, and deleting it is permanent.
+        self.assertEqual(self.submit(client, "Sneaky", "anonymous").status_code, 409)
+        database.delete_account(public["id"])
+        create_app(app.extensions["workshop_config"], start_worker=False, steamcmd=self.steam)
+        self.assertFalse(any(a["display_name"] == "Public Steam" for a in database.list_accounts()))
+
     def test_hidden_games(self) -> None:
         _, client, pool = self.make_app()
         self.steam.results["free_l"] = AccountCheck(True, [], licenses=[

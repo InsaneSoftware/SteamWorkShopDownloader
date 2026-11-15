@@ -1,10 +1,13 @@
 """Community Steam account pool: submission, validation and health checks."""
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 
@@ -16,6 +19,24 @@ from .vault import CredentialVault
 
 
 log = logging.getLogger(__name__)
+
+PUBLIC_ACCOUNT_LOGIN = "anonymous"
+PUBLIC_ACCOUNT_NAME = "Public Steam"
+PUBLIC_GAMES_PATH = Path(__file__).parent / "data" / "public_steam_games.json"
+
+
+@lru_cache(maxsize=1)
+def public_games() -> dict[int, tuple[str, bool]]:
+    """``{app_id: (name, partial)}`` for games that download anonymously."""
+    try:
+        data = json.loads(PUBLIC_GAMES_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        log.warning("Public Steam game list missing or unreadable: %s", PUBLIC_GAMES_PATH)
+        return {}
+    return {
+        int(game["app_id"]): (str(game["name"])[:200], game.get("anonymous") == "partial")
+        for game in data.get("games", [])
+    }
 
 # Transient failures (rate limit, Steam down) are retried soon; an account is
 # only flagged broken after this many of them in a row.
@@ -168,6 +189,29 @@ class AccountPool:
             "steam_id": steam_id or None,
         }
 
+    def ensure_public_account(self) -> None:
+        """Create the built-in "Public Steam" account once (SteamCMD's
+        anonymous login), and make sure its games are in the catalogue.
+
+        Deleting it in the admin dashboard is permanent, like config imports.
+        """
+        games = public_games()
+        if not self.config.public_steam_account or not games:
+            return
+        self.database.save_app_info({a: (name, True) for a, (name, _) in games.items()})
+        fingerprint = self.vault.fingerprint(PUBLIC_ACCOUNT_LOGIN)
+        if self.database.config_import_done(fingerprint):
+            return
+        if not self.database.account_exists(fingerprint):
+            account = self._new_account(
+                PUBLIC_ACCOUNT_NAME, PUBLIC_ACCOUNT_LOGIN, PUBLIC_ACCOUNT_LOGIN, "",
+                reason="Built-in account, waiting for its first check",
+            )
+            account["kind"] = "public"
+            self.database.create_account(account, max_pending=10**6)
+            log.info("Created the built-in Public Steam account (%s games)", len(games))
+        self.database.mark_config_imported(fingerprint)
+
     def import_config_accounts(self) -> None:
         """Move [steam] / [[steam.accounts]] logins from config.toml into the pool.
 
@@ -220,6 +264,8 @@ class AccountPool:
         return True
 
     def check(self, account: dict[str, Any]) -> dict[str, Any]:
+        if account.get("kind") == "public":
+            return self._check_public(account)
         account_id = account["id"]
         # app_status is checked for configured games and games the account
         # already had. Accounts whose library the Web API cannot see are also
@@ -431,8 +477,41 @@ class AccountPool:
 
     # ----- downloads ----------------------------------------------------
 
+    def _check_public(self, account: dict[str, Any]) -> dict[str, Any]:
+        """The anonymous login has no library worth scanning. Its games are
+        the ones a scan found to download anonymously."""
+        try:
+            result = self.steamcmd.check_account(self.credentials(account), [])
+        except Exception as exc:
+            log.exception("Public Steam check crashed")
+            self._failure(account, "Check could not run", str(exc), transient=True)
+            return self.database.get_account(account["id"])
+        if not result.logged_in:
+            # The anonymous login never has a wrong password, so always retry.
+            self._failure(account, result.reason, result.detail, transient=True)
+            return self._logged(account)
+        now = utc_now()
+        self.database.update_account(
+            account["id"],
+            status="working",
+            status_reason="",
+            owned_app_ids=list(public_games()),
+            last_error=None,
+            consecutive_failures=0,
+            last_checked_at=now,
+            last_ok_at=now,
+            broken_since=None,
+            next_check_at=_later(self.config.account_check_minutes),
+        )
+        return self._logged(account)
+
     def accounts_for_app(self, app_id: int) -> list[dict[str, Any]]:
-        return self.database.working_accounts_for_app(app_id)
+        accounts = self.database.working_accounts_for_app(app_id)
+        partial = public_games().get(app_id, ("", False))[1]
+        if partial:
+            # Only some items of this game download anonymously: real accounts first.
+            accounts.sort(key=lambda account: account.get("kind") == "public")
+        return accounts
 
     def mark_used(self, account_id: str) -> None:
         self.database.update_account(account_id, last_used_at=utc_now())

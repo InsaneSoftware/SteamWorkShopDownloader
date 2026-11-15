@@ -121,6 +121,17 @@ class Database:
                     expires_at TEXT
                 );
 
+                -- Blocked user agents. match is 'exact' or 'contains'.
+                -- expires_at NULL means permanent.
+                CREATE TABLE IF NOT EXISTS ua_blocks (
+                    pattern TEXT NOT NULL,
+                    match TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT,
+                    PRIMARY KEY (pattern, match)
+                );
+
                 -- config.toml logins already imported into the pool. They are
                 -- never imported again, so renames and deletions in the admin
                 -- dashboard survive restarts.
@@ -136,6 +147,22 @@ class Database:
             }
             if "item_name" not in columns:
                 connection.execute("ALTER TABLE jobs ADD COLUMN item_name TEXT")
+            # Columns added after the first release of these tables.
+            for table, column, definition in (
+                ("accounts", "kind", "TEXT NOT NULL DEFAULT 'shared'"),
+                ("activity_log", "user_agent", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                existing = {
+                    row["name"]
+                    for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                if column not in existing:
+                    connection.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                    )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_activity_ua ON activity_log(user_agent, at)"
+            )
             connection.commit()
 
     def create_job(self, job: dict[str, Any], max_queue_size: int) -> tuple[dict[str, Any], bool]:
@@ -557,26 +584,92 @@ class Database:
     # ----- Activity log and IP blocks -----------------------------------
 
     def log_activity(
-        self, ip: str, action: str, status: str, detail: str = "", bytes_: int | None = None
+        self, ip: str, action: str, status: str, detail: str = "",
+        bytes_: int | None = None, user_agent: str = "",
     ) -> None:
         with closing(self.connect()) as connection:
             connection.execute(
                 """
-                INSERT INTO activity_log (at, ip, action, status, detail, bytes)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO activity_log (at, ip, action, status, detail, bytes, user_agent)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (utc_now(), ip, action, status, detail[:300], bytes_),
+                (utc_now(), ip, action, status, detail[:300], bytes_, user_agent[:400]),
             )
             connection.commit()
 
+    def activity_by_user_agent(self, since: str, limit: int = 100) -> list[dict[str, Any]]:
+        """Per-user-agent totals, busiest first."""
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT user_agent,
+                    COUNT(*) AS events,
+                    COUNT(DISTINCT ip) AS ips,
+                    SUM(action = 'request' AND status = 'queued') AS requests,
+                    SUM(action = 'download' AND status = 'ok') AS downloads,
+                    COALESCE(SUM(CASE WHEN action = 'download' AND status = 'ok'
+                                      THEN bytes END), 0) AS bytes,
+                    SUM(action IN ('bad_password', 'admin_login_failed')) AS bad_passwords,
+                    SUM(action = 'blocked') AS blocked_hits,
+                    MAX(at) AS last_seen
+                FROM activity_log
+                WHERE at >= ?
+                GROUP BY user_agent
+                ORDER BY downloads + requests DESC, events DESC
+                LIMIT ?
+                """,
+                (since, limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def add_ua_block(
+        self, pattern: str, match: str, reason: str, expires_at: str | None
+    ) -> None:
+        with closing(self.connect()) as connection:
+            connection.execute(
+                """
+                INSERT INTO ua_blocks (pattern, match, reason, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(pattern, match) DO UPDATE SET
+                    reason = excluded.reason, created_at = excluded.created_at,
+                    expires_at = excluded.expires_at
+                """,
+                (pattern, match, reason[:200], utc_now(), expires_at),
+            )
+            connection.commit()
+
+    def remove_ua_block(self, pattern: str, match: str) -> bool:
+        with closing(self.connect()) as connection:
+            cursor = connection.execute(
+                "DELETE FROM ua_blocks WHERE pattern = ? AND match = ?", (pattern, match)
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def active_ua_blocks(self) -> list[dict[str, Any]]:
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM ua_blocks
+                WHERE expires_at IS NULL OR expires_at > ?
+                ORDER BY created_at DESC
+                """,
+                (utc_now(),),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def recent_activity(
-        self, since: str, ip: str | None = None, limit: int = 300
+        self, since: str, ip: str | None = None, limit: int = 300,
+        user_agent: str | None = None,
     ) -> list[dict[str, Any]]:
         query = "SELECT * FROM activity_log WHERE at >= ?"
         params: list[Any] = [since]
         if ip:
             query += " AND ip = ?"
             params.append(ip)
+        if user_agent is not None:
+            query += " AND user_agent = ?"
+            params.append(user_agent)
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
         with closing(self.connect()) as connection:
@@ -597,6 +690,7 @@ class Database:
                     SUM(action = 'share') AS shares,
                     SUM(action IN ('bad_password', 'admin_login_failed')) AS bad_passwords,
                     SUM(action = 'blocked') AS blocked_hits,
+                    COUNT(DISTINCT user_agent) AS user_agents,
                     MAX(at) AS last_seen
                 FROM activity_log
                 WHERE at >= ?
@@ -613,6 +707,10 @@ class Database:
             connection.execute("DELETE FROM activity_log WHERE at < ?", (before,))
             connection.execute(
                 "DELETE FROM ip_blocks WHERE expires_at IS NOT NULL AND expires_at < ?",
+                (utc_now(),),
+            )
+            connection.execute(
+                "DELETE FROM ua_blocks WHERE expires_at IS NOT NULL AND expires_at < ?",
                 (utc_now(),),
             )
             connection.commit()

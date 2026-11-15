@@ -52,6 +52,40 @@ def parse_block_target(value: str) -> str:
     return str(network)
 
 
+UA_MATCH_TYPES = ("exact", "contains")
+# Parts of nearly every browser's user agent. Blocking on them would block
+# almost everyone, so "contains" refuses them.
+TOO_BROAD_UA_PARTS = {
+    "mozilla", "mozilla/5.0", "applewebkit", "khtml", "like gecko", "gecko",
+    "chrome", "safari", "windows", "windows nt", "win64", "x64", "linux",
+    "android", "iphone", "mac os", "macintosh", "firefox", "edg", "mobile",
+}
+
+
+def parse_ua_block(pattern: str, match: str) -> tuple[str, str]:
+    """Validate a user agent block. An empty exact pattern blocks requests
+    without a User-Agent header."""
+    match = (match or "contains").strip().lower()
+    if match not in UA_MATCH_TYPES:
+        raise ValueError("Choose exact or contains")
+    pattern = pattern.strip()[:400]
+    if match == "contains":
+        if len(pattern) < 4:
+            raise ValueError("Use at least 4 characters for a contains match")
+        if pattern.lower() in TOO_BROAD_UA_PARTS:
+            raise ValueError(
+                f'"{pattern}" is part of almost every browser and would block nearly '
+                "everyone. Use a more specific part or an exact match."
+            )
+    return pattern, match
+
+
+def ua_matches(user_agent: str, pattern: str, match: str) -> bool:
+    if match == "exact":
+        return user_agent == pattern
+    return pattern.lower() in user_agent.lower()
+
+
 def expiry_from_hours(hours: float | None) -> str | None:
     if not hours:
         return None  # permanent
@@ -69,6 +103,7 @@ class IpGuard:
         self.database = database
         self._lock = threading.Lock()
         self._blocks: list[tuple[Any, dict[str, Any]]] = []
+        self._ua_blocks: list[dict[str, Any]] = []
         self._loaded_at = 0.0
         self._last_logged: dict[tuple[str, str], float] = {}
 
@@ -76,19 +111,37 @@ class IpGuard:
         with self._lock:
             self._loaded_at = 0.0
 
+    def ua_block_for(self, user_agent: str) -> dict[str, Any] | None:
+        self._refresh()
+        with self._lock:
+            blocks = self._ua_blocks
+        current = datetime.now(timezone.utc).isoformat()
+        for row in blocks:
+            if row["expires_at"] is not None and row["expires_at"] <= current:
+                continue
+            if ua_matches(user_agent, row["pattern"], row["match"]):
+                return row
+        return None
+
+    def _refresh(self) -> None:
+        now = time.monotonic()
+        with self._lock:
+            if now - self._loaded_at <= self.CACHE_SECONDS:
+                return
+            self._blocks = [
+                (ip_network(row["network"], strict=False), row)
+                for row in self.database.active_blocks()
+            ]
+            self._ua_blocks = self.database.active_ua_blocks()
+            self._loaded_at = now
+
     def block_for(self, ip: str) -> dict[str, Any] | None:
         try:
             address = ip_address(ip)
         except ValueError:
             return None
-        now = time.monotonic()
+        self._refresh()
         with self._lock:
-            if now - self._loaded_at > self.CACHE_SECONDS:
-                self._blocks = [
-                    (ip_network(row["network"], strict=False), row)
-                    for row in self.database.active_blocks()
-                ]
-                self._loaded_at = now
             blocks = self._blocks
         current = datetime.now(timezone.utc).isoformat()
         for network, row in blocks:

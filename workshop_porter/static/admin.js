@@ -112,7 +112,11 @@ function renderRow(account) {
 
   const who = el("td");
   who.append(el("div", "account-name", account.display_name));
-  who.append(el("div", "mono", account.username));
+  if (account.kind === "public") {
+    who.append(el("div", "account-meta", "built-in · SteamCMD anonymous login"));
+  } else {
+    who.append(el("div", "mono", account.username));
+  }
   if (account.steam_id) {
     const library = account.library_visible === true ? "library read from login"
       : account.library_visible === false ? "library not readable" : "library not scanned";
@@ -138,8 +142,9 @@ function renderRow(account) {
   }
   row.append(status);
 
-  row.append(el("td", "games-cell",
-    account.games.length ? account.games.map((g) => g.name).join(", ") : "–"));
+  const gamesCell = el("td", "games-cell");
+  fillGameList(gamesCell, account.games.map((g) => g.name), 20);
+  row.append(gamesCell);
 
   const checks = el("td", "checks-cell");
   checks.append(el("div", "", `last: ${formatTime(account.last_checked_at)}`));
@@ -269,8 +274,13 @@ async function loadActivity() {
   try {
     const query = new URLSearchParams({ hours: activityHours });
     if (ipFilter) query.set("ip", ipFilter);
+    if (uaFilter !== null) query.set("ua", uaFilter);
     const data = await api(`/api/admin/activity?${query}`);
     document.querySelector("#yourIp").textContent = data.your_ip;
+    document.querySelector("#yourUa").textContent = shortUa(data.your_user_agent);
+    document.querySelector("#yourUa").title = data.your_user_agent;
+    document.querySelector("#uaFilterClear").hidden = uaFilter === null;
+    renderUaRows(data.user_agents);
     const ips = data.ips.map((row) => row.ip);
     document.querySelector("#proxyWarning").hidden =
       !(ips.length > 0 && ips.every(isLocalIp));
@@ -311,6 +321,7 @@ function renderIpRows(ips) {
     tr.append(el("td", "num", row.bytes ? formatBytes(row.bytes) : "–"));
     tr.append(el("td", "num", row.shares || "–"));
     tr.append(el("td", row.bad_passwords ? "num warn" : "num", row.bad_passwords || "–"));
+    tr.append(el("td", row.user_agents > 3 ? "num warn" : "num", row.user_agents || "–"));
     tr.append(el("td", "checks-cell", formatTime(row.last_seen)));
     const actions = el("td", "actions-col");
     if (isLocalIp(row.ip)) {
@@ -339,12 +350,149 @@ function renderLog(events) {
     const ipCell = el("td");
     ipCell.append(ipButton(event.ip, "Show only this IP", () => setIpFilter(event.ip)));
     tr.append(ipCell);
+    const uaCell = el("td", "ua-cell");
+    uaCell.append(uaButton(event.user_agent || ""));
+    tr.append(uaCell);
     tr.append(el("td", "", ACTION_LABELS[event.action] || event.action));
     tr.append(el("td", "log-status", event.status.replace("_", " ")));
     const detail = event.bytes ? `${event.detail} · ${formatBytes(event.bytes)}` : event.detail;
     tr.append(el("td", "log-detail", detail));
     body.append(tr);
   });
+}
+
+let uaFilter = null;
+
+document.querySelector("#uaFilterClear").addEventListener("click", () => {
+  uaFilter = null;
+  loadActivity();
+});
+
+function shortUa(ua) {
+  if (!ua) return "(no user agent)";
+  const browsers = [
+    [/Edg\/(\d+)/, "Edge"], [/OPR\/(\d+)/, "Opera"], [/Firefox\/(\d+)/, "Firefox"],
+    [/Chrome\/(\d+)/, "Chrome"], [/Version\/(\d+).*Safari/, "Safari"],
+  ];
+  const systems = [
+    [/Windows/, "Windows"], [/iPhone|iPad/, "iOS"], [/Android/, "Android"],
+    [/Mac OS X/, "macOS"], [/Linux/, "Linux"],
+  ];
+  const found = browsers.map(([re, name]) => {
+    const match = ua.match(re);
+    return match && `${name} ${match[1]}`;
+  }).find(Boolean);
+  const os = (systems.find(([re]) => re.test(ua)) || [])[1];
+  if (found) return os ? `${found} · ${os}` : found;
+  return ua.length > 40 ? `${ua.slice(0, 40)}…` : ua;
+}
+
+function uaButton(ua) {
+  const button = el("button", "link-button ua-short", shortUa(ua));
+  button.type = "button";
+  button.title = `${ua || "(no user agent)"}\nClick to show only this browser`;
+  button.addEventListener("click", () => setUaFilter(ua));
+  return button;
+}
+
+function setUaFilter(ua) {
+  uaFilter = ua;
+  loadActivity();
+  document.querySelector("#logRows").scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function renderUaRows(rows) {
+  const body = document.querySelector("#uaRows");
+  body.replaceChildren();
+  document.querySelector("#uaEmpty").hidden = rows.length > 0;
+  rows.forEach((row) => {
+    const tr = el("tr", row.blocked ? "status-disabled" : "");
+    const cell = el("td", "ua-cell");
+    cell.append(uaButton(row.user_agent));
+    cell.append(el("div", "ua-full mono", row.user_agent || "(none)"));
+    if (row.blocked) {
+      cell.append(el("div", "reason", `blocked ${untilText(row.blocked.expires_at)}`));
+    }
+    tr.append(cell);
+    tr.append(el("td", row.ips > 5 ? "num warn" : "num", row.ips));
+    tr.append(el("td", "num", row.requests || "–"));
+    tr.append(el("td", "num strong", row.downloads || "–"));
+    tr.append(el("td", "num", row.bytes ? formatBytes(row.bytes) : "–"));
+    tr.append(el("td", row.bad_passwords ? "num warn" : "num", row.bad_passwords || "–"));
+    tr.append(el("td", "checks-cell", formatTime(row.last_seen)));
+    const actions = el("td", "actions-col");
+    if (row.blocked) {
+      const unblock = el("button", "btn btn-sm btn-outline-secondary", "Unblock");
+      unblock.addEventListener("click", () => removeUaBlock(row.blocked.pattern, row.blocked.match));
+      actions.append(unblock);
+    } else {
+      const block = el("button", "btn btn-sm btn-outline-danger", "Block");
+      block.addEventListener("click", () => openUaBlockForm(row.user_agent));
+      actions.append(block);
+    }
+    tr.append(actions);
+    body.append(tr);
+  });
+}
+
+function openUaBlockForm(ua) {
+  window.location.hash = "#blocks";
+  document.querySelector("#uaPattern").value = ua;
+  document.querySelector("#uaMatch").value = "exact";
+  document.querySelector("#uaReason").focus();
+}
+
+const uaHours = document.querySelector("#uaHours");
+const uaCustom = document.querySelector("#uaCustom");
+uaHours.addEventListener("change", () => {
+  uaCustom.hidden = uaHours.value !== "custom";
+  if (!uaCustom.hidden) uaCustom.focus();
+});
+
+document.querySelector("#uaBlockForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const pattern = document.querySelector("#uaPattern").value.trim();
+  const match = document.querySelector("#uaMatch").value;
+  const custom = uaHours.value === "custom";
+  const hours = custom ? Number(uaCustom.value) : Number(uaHours.value);
+  if (custom && !(hours >= 1)) {
+    showMessage("Enter the number of hours.", "error");
+    return;
+  }
+  const label = hours ? `for ${durationText(hours)}` : "permanently";
+  const what = pattern
+    ? (match === "exact" ? `the user agent "${shortUa(pattern)}"` : `user agents containing "${pattern}"`)
+    : "requests without a user agent";
+  if (!window.confirm(`Block ${what} ${label}?`)) return;
+  try {
+    await api("/api/admin/ua-blocks", {
+      method: "POST",
+      body: JSON.stringify({
+        pattern, match, hours: hours || null,
+        reason: document.querySelector("#uaReason").value,
+      }),
+    });
+    showMessage(`Blocked ${what} ${label}.`, "success");
+    event.target.reset();
+    uaCustom.hidden = true;
+    loadBlocks();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+});
+
+async function removeUaBlock(pattern, match) {
+  if (!window.confirm(`Unblock the user agent "${shortUa(pattern)}"?`)) return;
+  try {
+    await api("/api/admin/ua-blocks/remove", {
+      method: "POST",
+      body: JSON.stringify({ pattern, match }),
+    });
+    showMessage("User agent unblocked.", "success");
+    refreshCurrent();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
 }
 
 function setIpFilter(ip) {
@@ -406,17 +554,36 @@ async function loadBlocks() {
       api("/api/admin/activity?hours=1"),
     ]);
     document.querySelector("#yourIp").textContent = activity.your_ip;
-    renderBlocks(blocks.blocks);
+    document.querySelector("#yourUa").textContent = shortUa(activity.your_user_agent);
+    document.querySelector("#yourUa").title = activity.your_user_agent;
+    renderBlocks(blocks.blocks, blocks.ua_blocks);
   } catch (error) {
     showMessage(error.message, "error");
   }
 }
 
-function renderBlocks(blocks) {
-  document.querySelector("#blocksCount").textContent = blocks.length || "";
+function renderBlocks(blocks, uaBlocks = []) {
+  document.querySelector("#blocksCount").textContent = (blocks.length + uaBlocks.length) || "";
   const body = document.querySelector("#blockRows");
   body.replaceChildren();
-  document.querySelector("#blockEmpty").hidden = blocks.length > 0;
+  document.querySelector("#blockEmpty").hidden = blocks.length + uaBlocks.length > 0;
+  uaBlocks.forEach((block) => {
+    const tr = el("tr");
+    const cell = el("td", "ua-cell");
+    const label = block.match === "exact" ? "User agent" : "User agent contains";
+    cell.append(el("div", "account-meta", label));
+    cell.append(el("div", "ua-full mono", block.pattern || "(no user agent)"));
+    tr.append(cell);
+    tr.append(el("td", "", block.expires_at ? untilText(block.expires_at) : "permanent"));
+    tr.append(el("td", "", block.reason || "–"));
+    tr.append(el("td", "checks-cell", formatTime(block.created_at)));
+    const actions = el("td", "actions-col");
+    const unblock = el("button", "btn btn-sm btn-outline-secondary", "Unblock");
+    unblock.addEventListener("click", () => removeUaBlock(block.pattern, block.match));
+    actions.append(unblock);
+    tr.append(actions);
+    body.append(tr);
+  });
   blocks.forEach((block) => {
     const tr = el("tr");
     const ipCell = el("td");
@@ -486,8 +653,33 @@ function durationText(hours) {
 
 // The blocks count in the menu, on every tab.
 api("/api/admin/blocks").then((data) => {
-  document.querySelector("#blocksCount").textContent = data.blocks.length || "";
+  document.querySelector("#blocksCount").textContent =
+    (data.blocks.length + data.ua_blocks.length) || "";
 }).catch(() => {});
 
 showView();
 window.setInterval(refreshCurrent, 15000);
+
+// Long game lists (the built-in Public Steam account has hundreds) show the
+// first few names with a link to expand.
+function fillGameList(container, names, limit = 30) {
+  container.replaceChildren();
+  if (!names.length) {
+    container.textContent = "–";
+    return;
+  }
+  const shown = document.createElement("span");
+  shown.textContent = names.slice(0, limit).join(", ");
+  container.append(shown);
+  if (names.length > limit) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "link-button more-games";
+    more.textContent = ` +${names.length - limit} more`;
+    more.addEventListener("click", () => {
+      shown.textContent = names.join(", ");
+      more.remove();
+    });
+    container.append(more);
+  }
+}
