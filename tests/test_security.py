@@ -181,8 +181,13 @@ class ActivityAndBlockTests(unittest.TestCase):
             guesser.get("/api/jobs", headers={"Authorization": "Bearer d4"})
         self.assertEqual(guesser.get("/api/jobs", headers=TOKEN).status_code, 200)
 
-        guesser.get("/api/jobs", headers={"Authorization": "Bearer e5"})
-        self.assertEqual(guesser.get("/api/jobs", headers=TOKEN).status_code, 403)
+        fifth = guesser.get("/api/jobs", headers={"Authorization": "Bearer e5"})
+        self.assertEqual(fifth.status_code, 403)
+        self.assertTrue(fifth.get_json()["blocked"])
+        self.assertIn("Anti spam", fifth.get_json()["error"])
+        later = guesser.get("/api/jobs", headers=TOKEN)
+        self.assertEqual(later.status_code, 403)
+        self.assertIn("Anti spam: 5 wrong passwords", later.get_json()["error"])
         blocks = self.admin().get("/api/admin/blocks").get_json()["blocks"]
         block = next(b for b in blocks if b["network"].startswith(BAD))
         self.assertIn("wrong passwords", block["reason"])
@@ -196,8 +201,9 @@ class ActivityAndBlockTests(unittest.TestCase):
             local.get(f"/?admin=wrong{attempt}")
         self.assertEqual(local.get("/api/jobs", headers=TOKEN).status_code, 200)
         other = self.client("192.0.2.99")
-        for attempt in range(5):
+        for attempt in range(4):
             other.get(f"/?admin=wrong{attempt}")
+        self.assertIn(b"Anti spam", other.get("/?admin=wrong4").data)
         self.assertEqual(other.get("/api/jobs", headers=TOKEN).status_code, 403)
 
     def test_more_than_25_downloads_a_day_blocks_the_ip(self) -> None:

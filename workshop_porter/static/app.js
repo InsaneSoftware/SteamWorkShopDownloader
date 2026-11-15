@@ -1,3 +1,39 @@
+// ----- Blocked notice --------------------------------------------------
+// When the server blocks this IP (for example after too many wrong
+// passwords) any request answers 403 with blocked: true. Show it once.
+
+let blockedShown = false;
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const response = await nativeFetch(...args);
+  if (response.status === 403) {
+    response.clone().json().then((data) => {
+      if (data && data.blocked) showBlocked(data.error);
+    }).catch(() => {});
+  }
+  return response;
+};
+
+function showBlocked(message) {
+  if (blockedShown) return;
+  blockedShown = true;
+  document.querySelector("#blockedText").textContent = message;
+  document.querySelector("#blockedNotice").hidden = false;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.querySelector("#blockedClose").addEventListener("click", () => {
+  document.querySelector("#blockedNotice").hidden = true;
+});
+
+if (window.jQuery) {
+  window.jQuery(document).ajaxError((event, xhr) => {
+    if (xhr.status === 403 && xhr.responseJSON && xhr.responseJSON.blocked) {
+      showBlocked(xhr.responseJSON.error);
+    }
+  });
+}
+
 const tokenInput = document.querySelector("#adminToken");
 const jobForm = document.querySelector("#jobForm");
 const formMessage = document.querySelector("#formMessage");
@@ -94,6 +130,7 @@ async function refreshQueue() {
 }
 
 function offlineText(error) {
+  if (blockedShown || error.message.includes("blocked")) return "Blocked";
   return error.message.includes("token") ? "Token rejected" : "Offline";
 }
 

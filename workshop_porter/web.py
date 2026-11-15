@@ -158,11 +158,17 @@ def create_app(
             app.logger.exception("Could not write the activity log")
 
     def count_password_failure(attempt: str):
-        if ip_guard.password_failed(client_ip(), attempt):
-            log_activity(
-                "auto_block", "denied",
-                f"{AUTO_BLOCK_FAILURES} wrong passwords, blocked for {AUTO_BLOCK_HOURS} hours",
-            )
+        """Count a wrong password. Returns the block response when this blocks."""
+        if not ip_guard.password_failed(client_ip(), attempt):
+            return None
+        log_activity(
+            "auto_block", "denied",
+            f"{AUTO_BLOCK_FAILURES} wrong passwords, blocked for {AUTO_BLOCK_HOURS} hours",
+        )
+        block = ip_guard.block_for(client_ip())
+        if not block:
+            return None
+        return blocked_response(block)
 
     @app.before_request
     def enforce_ip_blocks():
@@ -184,13 +190,19 @@ def create_app(
             return None
         if ip_guard.should_log(ip, "blocked", 300):
             log_activity("blocked", "denied", f"{request.method} {request.path}"[:120])
+        return blocked_response(block, what)
+
+    def blocked_response(block, what: str = "IP address", why: str = ""):
+        reason = block.get("reason") or ""
+        if not why and reason.startswith("Auto: "):
+            why = f"Anti spam: {reason.removeprefix('Auto: ')}. "
         until = (
             "permanently" if block["expires_at"] is None
             else "until " + block["expires_at"][:16].replace("T", " ") + " UTC"
         )
-        message = f"Your {what} is blocked {until}."
+        message = f"{why}Your {what} is blocked {until}."
         if request.path.startswith("/api/") or request.path.startswith("/download/"):
-            return jsonify(error=message), 403
+            return jsonify(error=message, blocked=True), 403
         return app.response_class(message, status=403, mimetype="text/plain")
     if start_worker:
         worker.start()
@@ -202,7 +214,9 @@ def create_app(
                 log_activity("bad_password", "denied", f"{request.method} {request.path}")
             attempt = supplied.removeprefix("Bearer ").strip()
             if attempt and attempt != "Bearer":
-                count_password_failure(attempt)
+                blocked = count_password_failure(attempt)
+                if blocked:
+                    return blocked
             return jsonify(error="A valid admin token is required"), 401
         return None
 
@@ -307,8 +321,7 @@ def create_app(
             ):
                 if ip_guard.should_log(client_ip(), "admin_login_failed", 10):
                     log_activity("admin_login_failed", "denied")
-                count_password_failure("admin:" + secret)
-                return "No", 403
+                return count_password_failure("admin:" + secret) or ("No", 403)
             response = redirect(url_for("index"))
             response.set_cookie(
                 "rin_admin",
@@ -581,10 +594,10 @@ def create_app(
                         f"blocked for {AUTO_BLOCK_HOURS} hours",
                     )
                 return jsonify(error=(
-                    f"You downloaded {DAILY_DOWNLOAD_LIMIT} files in the last 24 hours. "
-                    "That is the daily limit, so this IP address is blocked for "
-                    f"{AUTO_BLOCK_HOURS} hours."
-                )), 403
+                    f"Anti spam: you downloaded {DAILY_DOWNLOAD_LIMIT} files in the last "
+                    "24 hours. That is the daily limit, so this IP address is blocked "
+                    f"for {AUTO_BLOCK_HOURS} hours."
+                ), blocked=True), 403
             database.record_download(visitor_ip, job["id"])
             log_activity("download", "ok", label, job.get("archive_bytes"))
 

@@ -577,3 +577,21 @@ option:disabled { color: #6b7179; }
 .log-filter { display: flex; align-items: center; gap: 8px; width: auto; }
 .log-filter .form-control { width: 200px; }
 .panel-note { margin: 0; padding: 8px 11px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); }
+
+.blocked-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid #7e4c4c;
+  border-left: 4px solid var(--accent);
+  background: #2e2224;
+  color: #f0c4c4;
+  font-size: 12px;
+}
+.blocked-notice[hidden] { display: none; }
+.blocked-notice strong { color: #fff; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+.blocked-notice span { flex: 1; min-width: 200px; }
+.blocked-notice .link-button { color: #f0c4c4; }
