@@ -1,6 +1,7 @@
 """IP blocking and activity logging helpers."""
 from __future__ import annotations
 
+import hashlib
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -94,6 +95,20 @@ def expiry_from_hours(hours: float | None) -> str | None:
     return (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
 
 
+AUTO_BLOCK_FAILURES = 5
+AUTO_BLOCK_WINDOW_SECONDS = 24 * 3600
+AUTO_BLOCK_HOURS = 24
+DAILY_DOWNLOAD_LIMIT = 25
+
+
+def is_blockable(ip: str) -> bool:
+    try:
+        parse_block_target(ip)
+    except ValueError:
+        return False
+    return True
+
+
 class IpGuard:
     """Answers "is this IP blocked?" with a short cache, and throttles logs."""
 
@@ -106,6 +121,7 @@ class IpGuard:
         self._ua_blocks: list[dict[str, Any]] = []
         self._loaded_at = 0.0
         self._last_logged: dict[tuple[str, str], float] = {}
+        self._failures: dict[str, dict[str, float]] = {}
 
     def invalidate(self) -> None:
         with self._lock:
@@ -164,6 +180,45 @@ class IpGuard:
                     k: v for k, v in self._last_logged.items() if v > cutoff
                 }
             return True
+
+    def password_failed(self, ip: str, attempt: str) -> bool:
+        """Count a wrong password. Blocks the IP and returns True on the fifth.
+
+        Only different passwords count. The page keeps polling with the saved
+        password, so one stale password repeated must not block anyone. Every
+        attempt counts, not only the ones that reach the activity log. Local
+        addresses are never blocked, see ``parse_block_target``.
+        """
+        if not is_blockable(ip):
+            return False
+        key = hashlib.sha256(attempt.encode("utf-8", "replace")).hexdigest()[:16]
+        now = time.monotonic()
+        cutoff = now - AUTO_BLOCK_WINDOW_SECONDS
+        with self._lock:
+            seen = {k: t for k, t in self._failures.get(ip, {}).items() if t > cutoff}
+            seen[key] = now
+            if len(seen) < AUTO_BLOCK_FAILURES:
+                self._failures[ip] = seen
+                if len(self._failures) > 10000:
+                    self._failures = {
+                        k: v for k, v in self._failures.items()
+                        if v and max(v.values()) > cutoff
+                    }
+                return False
+            self._failures.pop(ip, None)
+        return self.auto_block(ip, f"Auto: {AUTO_BLOCK_FAILURES} wrong passwords")
+
+    def auto_block(self, ip: str, reason: str) -> bool:
+        """Block an IP for AUTO_BLOCK_HOURS. False for local or already blocked IPs."""
+        try:
+            network = parse_block_target(ip)
+        except ValueError:
+            return False
+        if self.block_for(ip):
+            return False
+        self.database.add_block(network, reason, expiry_from_hours(AUTO_BLOCK_HOURS))
+        self.invalidate()
+        return True
 
     def prune(self) -> None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=ACTIVITY_RETENTION_DAYS)

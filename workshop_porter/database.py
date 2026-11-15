@@ -5,6 +5,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 
@@ -121,6 +122,14 @@ class Database:
                     expires_at TEXT
                 );
 
+                -- Files each IP downloaded, once per file, for the daily limit.
+                CREATE TABLE IF NOT EXISTS ip_downloads (
+                    ip TEXT NOT NULL,
+                    job_id TEXT NOT NULL,
+                    at TEXT NOT NULL,
+                    PRIMARY KEY (ip, job_id)
+                );
+
                 -- Blocked user agents. match is 'exact' or 'contains'.
                 -- expires_at NULL means permanent.
                 CREATE TABLE IF NOT EXISTS ua_blocks (
@@ -165,9 +174,36 @@ class Database:
             )
             connection.commit()
 
-    def create_job(self, job: dict[str, Any], max_queue_size: int) -> tuple[dict[str, Any], bool]:
+    def create_job(
+        self,
+        job: dict[str, Any],
+        max_queue_size: int,
+        ready_since: str | None = None,
+        usable: Callable[[dict[str, Any]], bool] | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Queue a job, or return a matching one that is queued or running.
+
+        With ``ready_since`` a finished job for the same item, completed at or
+        after that time and not expired, is returned too, so the same item is
+        not fetched from Steam again.
+        """
         with closing(self.connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if ready_since is not None:
+                ready = connection.execute(
+                    """
+                    SELECT * FROM jobs
+                    WHERE app_id = ? AND workshop_id = ? AND status = 'ready'
+                      AND completed_at >= ?
+                      AND (expires_at IS NULL OR expires_at > ?)
+                    ORDER BY completed_at DESC LIMIT 5
+                    """,
+                    (job["app_id"], job["workshop_id"], ready_since, utc_now()),
+                ).fetchall()
+                for row in ready:
+                    if usable is None or usable(dict(row)):
+                        connection.commit()
+                        return dict(row), False
             existing = connection.execute(
                 """
                 SELECT * FROM jobs
@@ -702,9 +738,32 @@ class Database:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def record_download(self, ip: str, job_id: str) -> bool:
+        """Remember that an IP downloaded a file. False if it already did."""
+        with closing(self.connect()) as connection:
+            cursor = connection.execute(
+                "INSERT OR IGNORE INTO ip_downloads (ip, job_id, at) VALUES (?, ?, ?)",
+                (ip, job_id, utc_now()),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def downloaded_before(self, ip: str, job_id: str) -> bool:
+        with closing(self.connect()) as connection:
+            return connection.execute(
+                "SELECT 1 FROM ip_downloads WHERE ip = ? AND job_id = ?", (ip, job_id)
+            ).fetchone() is not None
+
+    def downloads_since(self, ip: str, since: str) -> int:
+        with closing(self.connect()) as connection:
+            return connection.execute(
+                "SELECT COUNT(*) FROM ip_downloads WHERE ip = ? AND at >= ?", (ip, since)
+            ).fetchone()[0]
+
     def prune_activity(self, before: str) -> None:
         with closing(self.connect()) as connection:
             connection.execute("DELETE FROM activity_log WHERE at < ?", (before,))
+            connection.execute("DELETE FROM ip_downloads WHERE at < ?", (before,))
             connection.execute(
                 "DELETE FROM ip_blocks WHERE expires_at IS NOT NULL AND expires_at < ?",
                 (utc_now(),),

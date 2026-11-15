@@ -252,6 +252,7 @@ const ACTION_LABELS = {
   bad_password: "Wrong site password",
   admin_login_failed: "Failed admin login",
   blocked: "Blocked visit",
+  auto_block: "Auto-blocked",
 };
 
 document.querySelectorAll(".window-tabs button").forEach((button) => {

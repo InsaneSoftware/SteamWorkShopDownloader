@@ -269,20 +269,34 @@ disabled, enabled again or deleted.
 
 ### Activity log, IP blocks and user agent blocks
 
-The **Activity** tab in `/admin` lists every visitor IP for the last 24 hours,
+The **IPs** tab in `/admin` lists every visitor IP for the last 24 hours,
 7 days or 30 days. For each IP it shows requested items, rejected requests,
 downloads, data downloaded, shared accounts, wrong site passwords and how many
-different browsers (user agents) it used. A second table groups the same
+different browsers (user agents) it used.
+The **User agents** tab groups the same
 activity by user agent and shows from how many IPs each one came. One user
-agent from many IPs usually means someone rotating proxies. The log below
+agent from many IPs usually means someone rotating proxies. The **Log** tab
 shows each event with its browser and can be filtered by IP or user agent
 (click one to filter). Entries are kept for 90 days.
 
 Repeated wrong-password and blocked hits from the same IP are logged at most
 once a minute (blocked hits once every 5 minutes), so a stale password in a
-polling browser does not flood the log. A resumed download is counted once.
+polling browser does not flood the log. A resumed download is counted once,
+and so is the same file downloaded again from the same IP.
 
-The **Blocked IPs** tab blocks an IP or a range such as `203.0.113.0/24`, for
+IPs are blocked automatically for 24 hours when they:
+
+- enter 5 different wrong passwords (site or admin) within 24 hours. The same
+  wrong password repeated, like an old saved one while the page polls, does
+  not count.
+- download more than 25 different files in 24 hours. The 26th is refused.
+
+Requesting an item that already finished reuses that archive, as long as it
+still exists and the item was not updated on Steam since. Automatic blocks
+show up in the Blocks tab and can be removed there. Local addresses and a
+logged in admin are never blocked automatically.
+
+The **Blocks** tab blocks an IP or a range such as `203.0.113.0/24`, for
 1 hour up to permanently, with an optional reason. Blocked visitors get a
 `403` with the time the block ends. An admin is never blocked while logged in.
 Local and private addresses cannot be blocked.
@@ -295,7 +309,7 @@ change, so combine these blocks with IP blocks.
 
 The IPs are only real when the app knows it sits behind a proxy. Behind
 CloudPanel, Nginx or another reverse proxy, set this, or every visitor shows up
-as `127.0.0.1` (the Activity tab warns about it):
+as `127.0.0.1` (the IPs tab warns about it):
 
 ```toml
 [server]

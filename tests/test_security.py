@@ -171,6 +171,91 @@ class ActivityAndBlockTests(unittest.TestCase):
         self.assertEqual(no_agent.get("/").status_code, 403)
         self.assertEqual(self.client("192.0.2.126").get("/").status_code, 200)
 
+    def test_five_different_wrong_passwords_block_for_a_day(self) -> None:
+        guesser = self.client(BAD)
+        for attempt in ["a1", "b2", "c3", "d4"]:
+            self.assertEqual(guesser.get("/api/jobs", headers={
+                "Authorization": f"Bearer {attempt}"}).status_code, 401)
+        # Repeating a password (a stale saved one while polling) does not count.
+        for _ in range(10):
+            guesser.get("/api/jobs", headers={"Authorization": "Bearer d4"})
+        self.assertEqual(guesser.get("/api/jobs", headers=TOKEN).status_code, 200)
+
+        guesser.get("/api/jobs", headers={"Authorization": "Bearer e5"})
+        self.assertEqual(guesser.get("/api/jobs", headers=TOKEN).status_code, 403)
+        blocks = self.admin().get("/api/admin/blocks").get_json()["blocks"]
+        block = next(b for b in blocks if b["network"].startswith(BAD))
+        self.assertIn("wrong passwords", block["reason"])
+        self.assertIsNotNone(block["expires_at"])
+        events = self.admin().get(f"/api/admin/activity?ip={BAD}").get_json()["events"]
+        self.assertTrue(any(e["action"] == "auto_block" for e in events))
+
+        # Wrong admin passwords count too, and local addresses are never blocked.
+        local = self.client("127.0.0.1")
+        for attempt in range(6):
+            local.get(f"/?admin=wrong{attempt}")
+        self.assertEqual(local.get("/api/jobs", headers=TOKEN).status_code, 200)
+        other = self.client("192.0.2.99")
+        for attempt in range(5):
+            other.get(f"/?admin=wrong{attempt}")
+        self.assertEqual(other.get("/api/jobs", headers=TOKEN).status_code, 403)
+
+    def test_more_than_25_downloads_a_day_blocks_the_ip(self) -> None:
+        archives = self.root / "archives"
+        archives.mkdir(exist_ok=True)
+        jobs = []
+        for number in range(27):
+            job = ready_job(f"job-{number}")
+            job["workshop_id"] = str(1000 + number)
+            job["archive_name"] = f"item_{number}.zip"
+            job["download_token"] = f"t{number}"
+            (archives / job["archive_name"]).write_bytes(b"zip-data")
+            self.database.create_job(job, 100)
+            jobs.append(job)
+
+        def fetch(client, job):
+            response = client.get(f"/download/{job['id']}?token={job['download_token']}")
+            response.close()
+            return response.status_code
+
+        visitor = self.client(BAD)
+        # Clicking the same file many times counts once.
+        for _ in range(5):
+            self.assertEqual(fetch(visitor, jobs[0]), 200)
+        for job in jobs[1:25]:
+            self.assertEqual(fetch(visitor, job), 200)
+        data = self.admin().get(f"/api/admin/activity?ip={BAD}").get_json()
+        self.assertEqual(next(r for r in data["ips"] if r["ip"] == BAD)["downloads"], 25)
+        # A file already downloaded still works, the 26th new one blocks.
+        self.assertEqual(fetch(visitor, jobs[3]), 200)
+        self.assertEqual(fetch(visitor, jobs[25]), 403)
+        self.assertEqual(visitor.get("/api/jobs", headers=TOKEN).status_code, 403)
+        blocks = self.admin().get("/api/admin/blocks").get_json()["blocks"]
+        self.assertIn("downloads", next(b for b in blocks if b["network"].startswith(BAD))["reason"])
+        # Other visitors are not affected.
+        self.assertEqual(fetch(self.client("192.0.2.80"), jobs[26]), 200)
+
+    def test_finished_item_is_reused_instead_of_downloaded_again(self) -> None:
+        visitor = self.client(BAD)
+        visitor.post("/api/accounts", headers=TOKEN, json={
+            "display_name": "Donor", "username": "donor_l", "password": "pw"})
+        pool = self.app.extensions["workshop_accounts"]
+        while pool.check_due_account():
+            pass
+        job = ready_job()
+        (self.root / "archives").mkdir(exist_ok=True)
+        (self.root / "archives" / job["archive_name"]).write_bytes(b"zip-data")
+        self.database.create_job(job, 10)
+        response = visitor.post("/api/jobs", headers=TOKEN, json={
+            "app_id": 107410, "url": JOB_URL})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["job"]["id"], job["id"])
+        # Without the archive on disk a new job is queued.
+        (self.root / "archives" / job["archive_name"]).unlink()
+        response = visitor.post("/api/jobs", headers=TOKEN, json={
+            "app_id": 107410, "url": JOB_URL})
+        self.assertEqual(response.status_code, 201)
+
     def test_expired_block_is_ignored(self) -> None:
         self.database.add_block(BAD, "old", "2000-01-01T00:00:00+00:00")
         self.app.extensions["workshop_ip_guard"].invalidate()

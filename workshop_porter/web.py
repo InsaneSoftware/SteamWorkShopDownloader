@@ -25,7 +25,8 @@ from .database import (
 from .catalog import fetch_app_name
 from .metadata import fetch_workshop_details
 from .security import (
-    IpGuard, expiry_from_hours, normalize_ip, parse_block_target, parse_ua_block,
+    AUTO_BLOCK_FAILURES, AUTO_BLOCK_HOURS, DAILY_DOWNLOAD_LIMIT, IpGuard, is_blockable, expiry_from_hours, normalize_ip,
+    parse_block_target, parse_ua_block,
 )
 from .steamcmd import SteamCmd
 from .vault import CredentialVault
@@ -156,6 +157,13 @@ def create_app(
         except Exception:
             app.logger.exception("Could not write the activity log")
 
+    def count_password_failure(attempt: str):
+        if ip_guard.password_failed(client_ip(), attempt):
+            log_activity(
+                "auto_block", "denied",
+                f"{AUTO_BLOCK_FAILURES} wrong passwords, blocked for {AUTO_BLOCK_HOURS} hours",
+            )
+
     @app.before_request
     def enforce_ip_blocks():
         if time.monotonic() > next_prune[0]:
@@ -192,6 +200,9 @@ def create_app(
         if not hmac.compare_digest(supplied, f"Bearer {config.admin_token}"):
             if ip_guard.should_log(client_ip(), "bad_password", 60):
                 log_activity("bad_password", "denied", f"{request.method} {request.path}")
+            attempt = supplied.removeprefix("Bearer ").strip()
+            if attempt and attempt != "Bearer":
+                count_password_failure(attempt)
             return jsonify(error="A valid admin token is required"), 401
         return None
 
@@ -296,6 +307,7 @@ def create_app(
             ):
                 if ip_guard.should_log(client_ip(), "admin_login_failed", 10):
                     log_activity("admin_login_failed", "denied")
+                count_password_failure("admin:" + secret)
                 return "No", 403
             response = redirect(url_for("index"))
             response.set_cookie(
@@ -463,7 +475,18 @@ def create_app(
                 "completed_at": None,
                 "expires_at": None,
             }
-            stored, created = database.create_job(job, config.max_queue_size)
+            # A finished archive of the same item is reused unless the item
+            # changed on Steam since, so repeat clicks don't fetch it again.
+            updated = (
+                datetime.fromtimestamp(details.time_updated, timezone.utc).isoformat()
+                if details and details.time_updated else ""
+            )
+            stored, created = database.create_job(
+                job, config.max_queue_size, ready_since=updated,
+                usable=lambda row: bool(row.get("archive_name"))
+                and Path(row["archive_name"]).name == row["archive_name"]
+                and (config.archive_dir / row["archive_name"]).is_file(),
+            )
             log_activity(
                 "request", "queued" if created else "duplicate",
                 f"{job['game_name']} · {job['item_name'] or workshop_id} ({workshop_id})",
@@ -539,7 +562,30 @@ def create_app(
         archive = config.archive_dir / job["archive_name"]
         if not archive.is_file():
             return jsonify(error="Archive no longer exists"), 410
-        if first_part:
+        visitor_ip = client_ip()
+        if first_part and not database.downloaded_before(visitor_ip, job["id"]):
+            # Each file counts once per IP. Repeat clicks on the same file
+            # are not counted again.
+            since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            if (
+                is_blockable(visitor_ip)
+                and not has_admin_access()
+                and database.downloads_since(visitor_ip, since) >= DAILY_DOWNLOAD_LIMIT
+            ):
+                if ip_guard.auto_block(
+                    visitor_ip, f"Auto: more than {DAILY_DOWNLOAD_LIMIT} downloads in 24 hours"
+                ):
+                    log_activity(
+                        "auto_block", "denied",
+                        f"More than {DAILY_DOWNLOAD_LIMIT} downloads in 24 hours, "
+                        f"blocked for {AUTO_BLOCK_HOURS} hours",
+                    )
+                return jsonify(error=(
+                    f"You downloaded {DAILY_DOWNLOAD_LIMIT} files in the last 24 hours. "
+                    "That is the daily limit, so this IP address is blocked for "
+                    f"{AUTO_BLOCK_HOURS} hours."
+                )), 403
+            database.record_download(visitor_ip, job["id"])
             log_activity("download", "ok", label, job.get("archive_bytes"))
 
         if config.x_accel_redirect_prefix:
@@ -552,7 +598,6 @@ def create_app(
                 "attachment", {"filename": job["archive_name"]}
             )
         else:
-            visitor_ip = client_ip()
             release_download = download_limiter.acquire(visitor_ip)
             if release_download is None:
                 if ip_guard.should_log(visitor_ip, "download_busy", 30):
