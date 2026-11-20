@@ -156,7 +156,7 @@ class AccountPoolTests(unittest.TestCase):
         self.assertEqual(client.post("/api/jobs", headers=TOKEN, json=job).status_code, 201)
 
     def test_failures_flag_accounts(self) -> None:
-        _, client, pool = self.make_app()
+        app, client, pool = self.make_app()
         account_id = self.submit(client, "Bob", "bob_l").get_json()["account"]["id"]
         self.drain(pool)
 
@@ -184,6 +184,24 @@ class AccountPoolTests(unittest.TestCase):
         pool.check_due_account()
         self.assertEqual(status()["status"], "broken")
         self.assertEqual(status()["status_reason"], "Wrong login or password")
+
+        # A name the admin gave the account survives a resubmit.
+        database = app.extensions["workshop_database"]
+        pool.rename(database.get_account(account_id), "Admin Name")
+        self.steam.results["bob_l"] = AccountCheck(True, [227300])
+        self.assertEqual(self.submit(client, "Someone", "bob_l", "pw3").status_code, 201)
+        self.assertEqual(status()["display_name"], "Admin Name")
+        pool.check_due_account()
+
+        # A disabled account cannot be revived by resubmitting it.
+        self.steam.results["bob_l"] = AccountCheck(False, reason="Wrong login or password")
+        pool.request_recheck(account_id)
+        pool.check_due_account()
+        database.update_account(account_id, enabled=False)
+        response = self.submit(client, "Bob", "BOB_L", "pw4")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("disabled by the admin", response.get_json()["error"])
+        self.assertFalse(database.get_account(account_id)["enabled"])
 
         self.steam.results["empty_l"] = AccountCheck(True, [])
         self.submit(client, "Empty", "empty_l")

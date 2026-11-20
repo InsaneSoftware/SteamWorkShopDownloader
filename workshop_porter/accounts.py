@@ -148,7 +148,9 @@ class AccountPool:
         # The display name is public, so it must never reveal the login.
         if display_name.lower() == username.lower():
             raise ValueError("The display name cannot be the Steam login")
-        self.database.update_account(account["id"], display_name=display_name)
+        self.database.update_account(
+            account["id"], display_name=display_name, name_locked=1
+        )
         return display_name
 
     def submit(

@@ -159,6 +159,8 @@ class Database:
             # Columns added after the first release of these tables.
             for table, column, definition in (
                 ("accounts", "kind", "TEXT NOT NULL DEFAULT 'shared'"),
+                # 1 once the admin renamed the account, so a resubmit keeps it.
+                ("accounts", "name_locked", "INTEGER NOT NULL DEFAULT 0"),
                 ("activity_log", "user_agent", "TEXT NOT NULL DEFAULT ''"),
             ):
                 existing = {
@@ -335,7 +337,7 @@ class Database:
         "status", "status_reason", "last_error", "owned_app_ids", "enabled",
         "consecutive_failures", "last_checked_at", "last_ok_at",
         "broken_since", "next_check_at", "last_used_at", "steam_id",
-        "library_visible",
+        "library_visible", "name_locked",
     }
 
     @staticmethod
@@ -354,7 +356,8 @@ class Database:
 
         Returns ``(account, created)``. Raises ``DuplicateAccountError`` when
         the login is already in the pool and not broken, so nobody can
-        overwrite a working account's password.
+        overwrite a working account's password, and when the admin disabled
+        it. A name the admin gave the account is kept.
         """
         with closing(self.connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -362,6 +365,9 @@ class Database:
                 "SELECT * FROM accounts WHERE username_hash = ?",
                 (account["username_hash"],),
             ).fetchone()
+            if existing and not existing["enabled"]:
+                connection.rollback()
+                raise DuplicateAccountError("disabled")
             if existing and existing["status"] != "broken":
                 connection.rollback()
                 raise DuplicateAccountError(existing["status"])
@@ -382,11 +388,13 @@ class Database:
                     SET display_name = ?, username_enc = ?, password_enc = ?,
                         guard_code_enc = ?, status = 'pending',
                         status_reason = 'Waiting for validation', last_error = NULL,
-                        consecutive_failures = 0, enabled = 1, next_check_at = ?
+                        consecutive_failures = 0, next_check_at = ?
                     WHERE id = ?
                     """,
                     (
-                        account["display_name"], account["username_enc"],
+                        existing["display_name"] if existing["name_locked"]
+                        else account["display_name"],
+                        account["username_enc"],
                         account["password_enc"], account["guard_code_enc"],
                         account["next_check_at"], existing["id"],
                     ),

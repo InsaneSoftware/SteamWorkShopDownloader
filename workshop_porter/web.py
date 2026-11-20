@@ -773,10 +773,10 @@ def create_app(
             return jsonify(error=str(exc)), 400
         except DuplicateAccountError as exc:
             log_activity("share", "duplicate", str(payload.get("display_name", ""))[:60])
-            state = (
-                "is waiting for validation" if str(exc) == "pending"
-                else "is already in the pool"
-            )
+            state = {
+                "pending": "is waiting for validation",
+                "disabled": "was disabled by the admin",
+            }.get(str(exc), "is already in the pool")
             return jsonify(error=f"This Steam account {state}."), 409
         except QueueFullError as exc:
             log_activity("share", "queue_full", str(payload.get("display_name", ""))[:60])
