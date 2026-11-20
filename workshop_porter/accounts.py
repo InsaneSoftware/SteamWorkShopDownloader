@@ -108,14 +108,19 @@ class AccountPool:
         names = self.known_games(include_hidden=True)
         hidden = self.hidden_game_ids()
         counts = {app_id: 0 for app_id in self.config_game_ids()}
+        real_owners: set[int] = set()
         for account in self.database.list_accounts():
             if account["enabled"] and account["status"] == "working":
                 for app_id in account["owned_app_ids"]:
                     if app_id in names:
                         counts[app_id] = counts.get(app_id, 0) + 1
+                        if account.get("kind") != "public":
+                            real_owners.add(app_id)
         games = [
             {"app_id": app_id, "name": names[app_id], "accounts": count,
-             "hidden": app_id in hidden}
+             "hidden": app_id in hidden,
+             # Only Public Steam has it and only some items work anonymously.
+             "partial": self.is_partial_public_game(app_id) and app_id not in real_owners}
             for app_id, count in counts.items()
             if include_hidden or app_id not in hidden
         ]
@@ -506,6 +511,11 @@ class AccountPool:
             next_check_at=_later(self.config.account_check_minutes),
         )
         return self._logged(account)
+
+    @staticmethod
+    def is_partial_public_game(app_id: int) -> bool:
+        """True when only some Workshop items of this game download anonymously."""
+        return public_games().get(app_id, ("", False))[1]
 
     def accounts_for_app(self, app_id: int) -> list[dict[str, Any]]:
         accounts = self.database.working_accounts_for_app(app_id)

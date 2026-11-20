@@ -639,3 +639,12 @@ option:disabled { color: #6b7179; }
   .countdown div { width: 70px; }
   .countdown b { font-size: 24px; }
 }
+.partial-tag {
+  margin-left: 8px;
+  padding: 1px 5px;
+  border: 1px solid #796a4e;
+  color: #d9bc82;
+  font-size: 9px;
+  text-transform: uppercase;
+  cursor: help;
+}

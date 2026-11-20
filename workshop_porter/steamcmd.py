@@ -399,6 +399,10 @@ class SteamCmd:
         accounts = list(self.config.steam_accounts) + ([account] if account else [])
         secrets: list[str] = []
         for item in accounts:
+            if item.username.lower() == "anonymous":
+                # The public anonymous login is no secret. Hiding it would
+                # also turn "anonymously" into "[redacted]ly".
+                continue
             secrets += [item.password, item.guard_code]
             if include_usernames:
                 secrets.append(item.username)

@@ -330,7 +330,7 @@ def create_app(
         }
         if not include_error:
             result["error"] = None
-            if job["status"] == "failed":
+            if job["status"] == "failed" and job["message"] == "Download failed":
                 result["message"] = "Failed"
         if include_download_link and job["status"] == "ready":
             base = config.public_base_url or request.url_root.rstrip("/")

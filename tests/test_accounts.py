@@ -447,12 +447,45 @@ class AccountPoolTests(unittest.TestCase):
         self.assertIn("RimWorld", names)
         self.assertNotIn("anonymous", client.get("/api/accounts", headers=TOKEN).get_data(as_text=True))
 
+        # A partial game with only Public Steam is marked "some items", and a
+        # failed item says the game must be owned, without retrying.
+        game = next(g for g in client.get("/api/games", headers=TOKEN).get_json()["games"]
+                    if g["app_id"] == partial)
+        self.assertTrue(game["partial"])
+        from workshop_porter.steamcmd import SteamCmdError
+        from workshop_porter.worker import PublicJobError
+        tries: list[str] = []
+
+        def failing(app_id, workshop_id, progress, account):
+            tries.append(account.username)
+            raise SteamCmdError("ERROR! Download item 1 failed (Failure).", retryable=True)
+
+        self.steam.download = failing
+        worker = app.extensions["workshop_worker"]
+        with self.assertRaises(PublicJobError) as caught:
+            worker._download_with_pool({"id": "x", "app_id": partial,
+                                        "game_name": game["name"], "workshop_id": "1"})
+        self.assertIn("needs a Steam account that owns", str(caught.exception))
+        self.assertEqual(tries, ["anonymous"])
+
+        # The public login is not redacted from SteamCMD output.
+        from workshop_porter.config import SteamAccount
+        from workshop_porter.steamcmd import SteamCmd
+        steamcmd = SteamCmd(app.extensions["workshop_config"])
+        self.assertEqual(
+            steamcmd._redact("Connecting anonymously", SteamAccount("Public Steam", "anonymous", "anonymous", "", "")),
+            "Connecting anonymously",
+        )
+
         # Partial games: real accounts first, Public Steam last.
         self.steam.results["real_l"] = AccountCheck(True, [partial])
         self.submit(client, "Real", "real_l")
         self.drain(pool)
         self.assertEqual([a["display_name"] for a in pool.accounts_for_app(partial)],
                          ["Real", "Public Steam"])
+        game = next(g for g in client.get("/api/games", headers=TOKEN).get_json()["games"]
+                    if g["app_id"] == partial)
+        self.assertFalse(game["partial"])
 
         # Nobody can share "anonymous" again, and deleting it is permanent.
         self.assertEqual(self.submit(client, "Sneaky", "anonymous").status_code, 409)

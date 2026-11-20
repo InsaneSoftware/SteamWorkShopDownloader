@@ -49,6 +49,14 @@ def exclusive_file_lock(path: Path) -> Iterator[None]:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+
+class PublicJobError(RuntimeError):
+    """A failure with a message that visitors may see. ``detail`` is for the admin."""
+
+    def __init__(self, message: str, detail: str = ""):
+        super().__init__(message)
+        self.detail = detail
+
 class QueueWorker:
     def __init__(self, config: Config, database: Database, pool: AccountPool):
         self.config = config
@@ -124,6 +132,15 @@ class QueueWorker:
                 expires_at=expires_at.isoformat(),
                 error=None,
             )
+        except PublicJobError as exc:
+            log.warning("Job %s failed: %s", job_id, exc)
+            self.database.update_job(
+                job_id,
+                status="failed",
+                message=str(exc),
+                error=f"{exc}\n\n{exc.detail}"[-4000:],
+                completed_at=utc_now(),
+            )
         except Exception as exc:
             log.exception("Job %s failed", job_id)
             self.database.update_job(
@@ -144,6 +161,7 @@ class QueueWorker:
         # Up to three accounts. With only one, a network hiccup gets a second
         # try on the same account.
         attempts = accounts[:3] if len(accounts) > 1 else accounts * 2
+        partial = self.pool.is_partial_public_game(job["app_id"])
         last_error: Exception | None = None
         for number, account in enumerate(attempts):
             if number and isinstance(last_error, SteamCmdError) and last_error.retryable:
@@ -168,6 +186,16 @@ class QueueWorker:
                 )
             except SteamCmdError as exc:
                 last_error = exc
+                if partial and account.get("kind") == "public" and not exc.login_failed:
+                    # Only some items of this game download anonymously and
+                    # this is not one of them. Retrying will not help.
+                    raise PublicJobError(
+                        f"This item needs a Steam account that owns {job['game_name']}. "
+                        f"Public Steam can only download some {job['game_name']} items "
+                        "and this is not one of them. Share an account that owns the "
+                        "game to make it work.",
+                        str(exc),
+                    ) from exc
                 if exc.login_failed:
                     # Let the checker confirm and flag it. Try the next account.
                     log.warning("Login failed for account %s", account["id"][:8])

@@ -305,6 +305,12 @@ function renderGames(games) {
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       name.append(link);
+      if (game.partial) {
+        const tag = el("span", "partial-tag", "some items");
+        tag.title = "Only Public Steam has this game. It can download some of its "
+          + "Workshop items, not all. Share an account that owns it for full support.";
+        name.append(tag);
+      }
       row.append(name);
       const count = el("td", "count",
         game.accounts ? `${game.accounts} account${game.accounts === 1 ? "" : "s"}` : "none yet");
@@ -318,7 +324,7 @@ function renderGames(games) {
     const game = counts.get(option.value);
     if (!game) return;
     option.textContent = game.accounts
-      ? `${game.name} (${game.accounts} account${game.accounts === 1 ? "" : "s"})`
+      ? `${game.name} (${game.partial ? "some items only" : `${game.accounts} account${game.accounts === 1 ? "" : "s"}`})`
       : `${game.name} (no account yet)`;
     option.disabled = game.accounts === 0;
   });
